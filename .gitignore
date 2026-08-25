@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+venv/
+.venv/
+
+# Secrets — never commit
+.env
+
+# Data: raw PDFs and generated artifacts are large / reproducible
+data/raw/
+data/chroma_db/
+data/processed/
+data/eval_results.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,36 @@
+# KG-RAG requirements — CPU-only, Python 3.12
+#
+# NOTE ON VERSIONS: PROJECT_CONTEXT.md pins 2024-era versions (chromadb==0.5.0,
+# google-generativeai==0.7.0, langgraph==0.2.0, ...). Those are ~2 years stale as of
+# 2026-08 and several no longer resolve or are deprecated upstream. We keep the exact
+# same architecture and libraries, but on currently-supported versions. The one real
+# swap: google-generativeai -> google-genai (Google deprecated the former SDK).
+
+# ---------- Phase 1: ingestion + chunking ----------
+PyMuPDF>=1.24
+spacy>=3.7,<3.9
+tqdm>=4.66
+pydantic>=2.8
+python-dotenv>=1.0
+
+# ---------- Phase 2: embeddings + vector store ----------
+# torch is installed separately from the CPU-only index (see README) to avoid
+# pulling ~2.5GB of CUDA wheels we cannot use on integrated Radeon graphics.
+torch>=2.3
+sentence-transformers>=3.0,<6
+transformers>=4.44,<5      # <5 kept deliberately: REBEL (BART seq2seq) is validated on the 4.x generate() API
+chromadb>=0.5
+
+# ---------- Phase 3/4: graph construction ----------
+networkx>=3.3
+thefuzz>=0.22
+rapidfuzz>=3.0             # C-speed backend for thefuzz; 50-100x faster fuzzy matching
+pyvis>=0.3.2
+
+# ---------- Phase 6: orchestration + LLM ----------
+langgraph>=0.2
+google-genai>=1.0          # current Gemini SDK (replaces deprecated google-generativeai)
+groq>=0.9                  # backup LLM provider
+
+# ---------- Phase 7: UI + eval ----------
+streamlit>=1.36
