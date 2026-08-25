@@ -120,6 +120,15 @@ def candidate_mentions(query: str) -> list[str]:
         normalised = normalise_entity(text)
         if not normalised or normalised in _QUERY_STOPWORDS or len(normalised) < 2:
             continue
+
+        # Drop candidates made ENTIRELY of question words. The single-token check
+        # above misses multi-word chunks: spaCy hands back "Which models" as one
+        # noun chunk, which is not in the stopword set as a phrase, and fuzzy
+        # matching then happily resolved it to a graph node called "mode".
+        tokens = normalised.split()
+        if all(token in _QUERY_STOPWORDS for token in tokens):
+            continue
+
         if normalised in seen:
             continue
         seen.add(normalised)

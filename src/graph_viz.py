@@ -246,10 +246,14 @@ def build_visualisation(
     }
     """)
 
-    network.write_html(str(output), notebook=False, open_browser=False)
+    # NOT network.write_html(): pyvis opens the file with the platform default
+    # encoding, which on Windows is cp1252, and dies on the first non-ASCII
+    # character in a node label or tooltip - and this corpus is full of them
+    # (Greek letters, en-dashes, accented author names). Generating the HTML and
+    # writing it ourselves as UTF-8 sidesteps that entirely.
+    html = network.generate_html(notebook=False)
 
-    # pyvis has no legend support, so inject one directly into the saved page.
-    html = output.read_text(encoding="utf-8")
+    # pyvis has no legend support, so inject one directly into the page.
     html = html.replace("<body>", f"<body>{_legend_html()}", 1)
     html = html.replace("</head>", f"<title>{title}</title></head>", 1)
     output.write_text(html, encoding="utf-8")

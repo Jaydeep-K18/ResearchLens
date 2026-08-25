@@ -64,9 +64,10 @@ import networkx as nx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.utils import GRAPH_PATH, banner, ensure_dirs, setup_console  # noqa: E402
 
-# Fuzzy-matching thresholds (0-100). See the long note in _canonicalise_entities.
-MERGE_THRESHOLD = 92          # above this, two strings are the SAME entity
-VARIANT_THRESHOLD = 80        # above this but differing by version, they are RELATED
+# Fuzzy-matching threshold (0-100) for MERGING two entity strings into one node.
+# Deliberately strict, and deliberately measured with fuzz.ratio rather than
+# fuzz.WRatio - see the long note in _canonicalise_entities.
+MERGE_THRESHOLD = 90
 
 # Entity strings that are grammatically fine but useless as graph nodes.
 _STOP_ENTITIES = {
@@ -115,6 +116,20 @@ def is_valid_entity(text: str) -> bool:
         return False
     if len(normalised.split()) > 8:
         return False               # a sentence fragment, not an entity
+
+    # Maths notation leaking out of equations: "dk", "L L", "sqrt-dk", "pepos+k".
+    # These reached the graph as real nodes with 100+ edges each.
+    tokens = normalised.split()
+    if "et al" not in normalised and all(len(token) <= 2 for token in tokens):
+        # The "et al" exemption is load-bearing, not a nicety: "he et al" is
+        # three two-letter tokens, so the bare rule silently deleted author
+        # citations - the single entity type the authorship questions depend on.
+        return False               # "L L", "dk", "h t"
+    if any(char in normalised for char in "√∑∏∫≤≥≈∈⊂×÷±"):
+        return False
+    if len(set(tokens)) == 1 and len(tokens) > 1:
+        return False               # "layer layer"
+
     return True
 
 
@@ -124,6 +139,22 @@ def _version_stem(normalised: str) -> tuple[str, str | None]:
     if not match:
         return normalised, None
     return normalised[: match.start()].strip(" -"), match.group(1)
+
+
+_INITIALS_RE = re.compile(r"^(?:[a-z]\.?\s+)+")
+
+
+def _strip_initials(normalised: str) -> str:
+    """
+    'a. vaswani' -> 'vaswani',  'k. he' -> 'he'.
+
+    Author names are the one case where a pure similarity score reliably fails:
+    "A. Vaswani" and "Vaswani" are unambiguously one person, but they share only
+    73% of their characters, well under any threshold safe enough to use
+    generally. Handling initials as an explicit rule lets the similarity
+    threshold stay strict everywhere else.
+    """
+    return _INITIALS_RE.sub("", normalised).strip()
 
 
 def _canonicalise_entities(counts: Counter) -> tuple[dict[str, str], list[tuple[str, str]]]:
@@ -151,6 +182,27 @@ def _canonicalise_entities(counts: Counter) -> tuple[dict[str, str], list[tuple[
 
     We canonicalise toward the MOST FREQUENT surface form, on the reasoning that
     the spelling a corpus uses most often is the one a user is most likely to type.
+
+    WHY fuzz.ratio AND NOT fuzz.WRatio
+    ----------------------------------
+    The first version of this used WRatio, which is rapidfuzz's "smart" scorer -
+    it blends several strategies including partial_ratio, so a SUBSTRING scores
+    very highly. That is right for search and badly wrong for entity resolution,
+    because containment is not identity. It produced 2,257 bogus variant links:
+
+        'layer'   <-> '101-layer residual net'
+        'object'  <-> 'a failure case with overlapping objects'
+        'scale'   <-> 'multi-scale feature extraction'
+        'cnn'     <-> 'cnn activations'
+
+    41% of all edges in the graph were that noise. fuzz.ratio is plain edit
+    distance over the whole string, so a short string inside a long one scores
+    low, exactly as it should.
+
+    NOTE the deliberate asymmetry with query time: building the graph is STRICT
+    (a wrong merge corrupts the data permanently), while find_entity() below is
+    LENIENT and still uses WRatio (a user typing "Faster RCNN" must reach the
+    node, and a wrong match there costs one bad search, not a corrupted graph).
     """
     from rapidfuzz import fuzz, process
 
@@ -161,45 +213,82 @@ def _canonicalise_entities(counts: Counter) -> tuple[dict[str, str], list[tuple[
     mapping: dict[str, str] = {}
     variant_pairs: set[tuple[str, str]] = set()
 
+    # Index by initials-stripped form so author-name variants can be caught
+    # without loosening the similarity threshold for everything else.
+    by_stripped: dict[str, str] = {}
+
     for entity in ordered:
+        stripped = _strip_initials(entity) or entity
+
+        # --- rule 1: author initials ("a. vaswani" == "vaswani") ----------
+        # Order-independent on purpose: whichever spelling the corpus uses more
+        # often is seen first and becomes canonical, and the other maps onto it.
+        # An earlier version required the entity to BE the initialled form, so
+        # the merge only happened in one of the two possible orderings.
+        if stripped in by_stripped and by_stripped[stripped] != entity:
+            mapping[entity] = by_stripped[stripped]
+            continue
+
         if not canonical_forms:
             canonical_forms.append(entity)
             mapping[entity] = entity
+            by_stripped.setdefault(stripped, entity)
             continue
 
-        # rapidfuzz is the C-speed backend; this is the hot loop (O(n^2) in the
-        # worst case) and a pure-Python matcher would take minutes here.
+        # --- rule 2: near-identical strings --------------------------------
+        # rapidfuzz is the C-speed backend; this is the hot loop and a
+        # pure-Python matcher would take minutes over thousands of entities.
         match = process.extractOne(
-            entity, canonical_forms, scorer=fuzz.WRatio, score_cutoff=VARIANT_THRESHOLD
+            entity, canonical_forms, scorer=fuzz.ratio, score_cutoff=MERGE_THRESHOLD
         )
 
-        if match is None:
-            canonical_forms.append(entity)
-            mapping[entity] = entity
+        if match is not None:
+            candidate = match[0]
+            entity_stem, entity_version = _version_stem(entity)
+            candidate_stem, candidate_version = _version_stem(candidate)
+
+            versions_conflict = (
+                entity_version is not None
+                and candidate_version is not None
+                and entity_version != candidate_version
+            ) or (
+                # "yolo" vs "yolov3": one carries a version, the other does not,
+                # and the stems match. Distinct models, not spellings.
+                (entity_version is None) != (candidate_version is None)
+                and entity_stem == candidate_stem
+            )
+
+            if not versions_conflict:
+                mapping[entity] = candidate
+                continue
+
+        # --- not merged: its own node -------------------------------------
+        canonical_forms.append(entity)
+        mapping[entity] = entity
+        by_stripped.setdefault(stripped, entity)
+
+    # --- rule 3: variant links, ONLY for genuine version differences -------
+    # This is the narrow case the link was invented for: YOLO/YOLOv3,
+    # ResNet-50/ResNet-101, CIFAR-10/CIFAR-100 - different things a reader would
+    # still want to traverse between. Anything broader floods the graph (an
+    # earlier similarity-based rule produced 2,257 links, 41% of all edges).
+    #
+    # Done as a POST-PASS over the finished canonical list rather than inside the
+    # loop: linking as we go only caught pairs where the versioned form happened
+    # to be processed second, so "yolov3" before "yolo" silently produced no link.
+    by_stem: dict[str, list[tuple[str, str | None]]] = {}
+    for form in canonical_forms:
+        stem, version = _version_stem(form)
+        if stem:
+            by_stem.setdefault(stem, []).append((form, version))
+
+    for group in by_stem.values():
+        if len(group) < 2:
             continue
-
-        candidate, score, _ = match
-        entity_stem, entity_version = _version_stem(entity)
-        candidate_stem, candidate_version = _version_stem(candidate)
-
-        versions_conflict = (
-            entity_version is not None
-            and candidate_version is not None
-            and entity_version != candidate_version
-        ) or (
-            # "yolo" vs "yolov3": one has a version, the other does not, and the
-            # stems match. Distinct models.
-            (entity_version is None) != (candidate_version is None)
-            and entity_stem == candidate_stem
-        )
-
-        if score >= MERGE_THRESHOLD and not versions_conflict:
-            mapping[entity] = candidate
-        else:
-            canonical_forms.append(entity)
-            mapping[entity] = entity
-            if versions_conflict or score >= VARIANT_THRESHOLD:
-                variant_pairs.add(tuple(sorted((entity, candidate))))
+        for i, (left, left_version) in enumerate(group):
+            for right, right_version in group[i + 1:]:
+                if left_version != right_version:
+                    variant_pairs.add(tuple(sorted((left, right))))
 
     return mapping, sorted(variant_pairs)
 

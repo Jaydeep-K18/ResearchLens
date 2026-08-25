@@ -168,6 +168,39 @@ that would mean five phases of work were not worth it, and that is what the numb
 
 ---
 
+## What it looks like
+
+The knowledge graph is generated as a self-contained interactive HTML file — drag nodes, zoom,
+hover for an entity's aliases and source papers, click an edge for the sentence it came from:
+
+```bash
+python src/graph_viz.py --entity "Faster R-CNN" --hops 2
+start data/processed/graph_viz.html
+```
+
+Nodes are coloured by a type inferred from the relations they participate in (see below), and
+sized by degree. On the eight-paper corpus that classifies 2,766 entities as 238 models,
+94 datasets, 84 metrics, 22 people, 24 organisations, and the rest concepts.
+
+> **Screenshots:** add PNGs of the Streamlit UI and the graph to `docs/` and link them here.
+> Two worth capturing: the side-by-side *Basic RAG vs KG-RAG* comparison, and a multi-hop
+> chain in the graph tab's path finder.
+
+### Typical query cost (CPU, 8-paper corpus)
+
+| Stage | Time |
+|---|---|
+| Vector search | 0.2 s |
+| Graph traversal (2 hops) | 2.2 s |
+| Merge + cross-encoder re-rank | 6.9 s |
+| **Total before LLM call** | **~9 s** |
+
+Re-ranking dominates, because scoring ~26 candidate passages with a cross-encoder means 26
+forward passes on CPU. That is the deliberate trade described above: slow and precise, applied
+only to the shortlist.
+
+---
+
 ## Tech stack
 
 | Purpose | Library / model | Version | Notes |

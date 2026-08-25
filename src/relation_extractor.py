@@ -328,7 +328,13 @@ _COMPARATIVE_ADJECTIVES = {
 
 # Prepositions that carry the object for particular relations.
 _RELATION_PREPOSITIONS = {
-    "trained_on": {"on", "with", "using"},
+    # "on" ONLY. Allowing "with"/"using" here conflated two different facts:
+    #   "trained ON ImageNet"  -> a dataset      (what we want)
+    #   "trained WITH SGD"     -> an optimiser   (not a dataset at all)
+    # Both became trained_on edges, so a question about training data could
+    # traverse into optimiser trivia. Those now get their own relation.
+    "trained_on": {"on"},
+    "trained_with": {"with", "using"},
     "evaluated_on": {"on", "against"},
     "compared_to": {"to", "with", "against"},
     "based_on": {"on", "upon"},
@@ -524,6 +530,14 @@ def extract_domain_triples(doc) -> list[dict]:
                 if allowed:
                     for obj in _prep_objects([token] + direct_objects, allowed, doc):
                         add(subject, relation, obj)
+
+                # One verb, two relations: "train" yields trained_on for "on X"
+                # and trained_with for "with/using X", so a dataset and an
+                # optimiser never end up behind the same edge label.
+                if relation == "trained_on":
+                    for obj in _prep_objects([token] + direct_objects,
+                                             _RELATION_PREPOSITIONS["trained_with"], doc):
+                        add(subject, "trained_with", obj)
 
         # --- comparative adjectives: "X is faster than Y" ------------------
         if token.pos_ in {"ADJ", "ADV"} and token.text.lower() in _COMPARATIVE_ADJECTIVES:
