@@ -46,6 +46,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Annotated
 
 from typing_extensions import TypedDict
 
@@ -54,6 +55,13 @@ from src.llm import LLMUnavailable, get_llm  # noqa: E402
 from src.utils import banner, setup_console  # noqa: E402
 
 DEFAULT_TOP_K = 8
+
+
+def merge_timings(left: dict | None, right: dict | None) -> dict:
+    """
+    Reducer for the `timings` key. See the note in KGRagState below.
+    """
+    return {**(left or {}), **(right or {})}
 
 
 class KGRagState(TypedDict, total=False):
@@ -65,6 +73,22 @@ class KGRagState(TypedDict, total=False):
     know which method contributed what. A pipeline that returns only its answer
     cannot be inspected, and an uninspectable retrieval system is impossible to
     debug or to demo.
+
+    WHY `timings` IS ANNOTATED AND THE OTHERS ARE NOT
+    -------------------------------------------------
+    By default a state key is a "last value" channel that accepts exactly ONE
+    write per step. retrieve_vector and retrieve_graph run in the SAME step, so:
+
+        vector_results / graph_results   different keys -> fine
+        timings                          BOTH nodes write it -> error
+
+    LangGraph does not silently pick a winner; it raises InvalidUpdateError.
+    That is the right behaviour - a silently dropped write would mean losing
+    half the timing data with no indication anything went wrong.
+
+    The fix is to give the key a REDUCER: a function saying how to combine
+    concurrent writes. Annotated[dict, merge_timings] tells LangGraph to merge
+    the two dicts instead of rejecting them.
     """
     query: str
     vector_results: list
@@ -73,7 +97,7 @@ class KGRagState(TypedDict, total=False):
     reranked_results: list
     answer: str
     sources: list
-    timings: dict
+    timings: Annotated[dict, merge_timings]
     error: str | None
 
 
@@ -303,11 +327,9 @@ class KGRagPipeline:
     # -- public API --------------------------------------------------------
 
     def run(self, query: str) -> KGRagState:
-        # `timings` is written by several nodes. LangGraph's default behaviour
-        # for a plain (non-reducer) key is last-write-wins, so we merge the
-        # per-node timings back together after the run rather than losing all
-        # but one.
         started = time.time()
+        # Per-node timings are merged by the reducer on the `timings` key; we
+        # only add the wall-clock total, which nothing else writes.
         state: KGRagState = self.workflow.invoke({"query": query})
         state["timings"] = {**(state.get("timings") or {}), "total": time.time() - started}
         return state
