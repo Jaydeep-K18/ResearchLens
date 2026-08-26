@@ -328,7 +328,7 @@ python notebooks/03_langgraph_intro.py    # state, nodes, edges, parallel branch
 pytest tests/ -q
 ```
 
-120 tests, no API key required. Several encode real bugs found during development, so they
+123 tests, no API key required. Several encode real bugs found during development, so they
 cannot come back:
 
 - the semantic chunker turning 56K characters of Mask R-CNN into 516K of chunks, because
@@ -338,6 +338,9 @@ cannot come back:
 - the domain extractor silently returning **zero** triples because spaCy's lemmatizer had been
   disabled for speed, and verb lookup is by lemma
 - LangGraph raising `InvalidUpdateError` because two parallel nodes wrote the same state key
+- the evaluation harness scoring a failed API call as a 1/5 answer, which turned 17 dead
+  requests into a clean-looking table reading "1.00 across every tier" — the most dangerous
+  bug in the project, because it produced confident, specific, wrong numbers
 
 ---
 
@@ -405,7 +408,7 @@ src/
   evaluate.py            20-question harness            Phase 7
   app.py                 Streamlit UI                   Phase 7
 notebooks/               three explanatory scripts
-tests/                   120 tests
+tests/                   123 tests
 scripts/fetch_papers.py  reproducible arXiv corpus
 ```
 
