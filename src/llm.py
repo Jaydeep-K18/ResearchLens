@@ -39,18 +39,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.utils import PROJECT_ROOT  # noqa: E402
 
 # Model preference order. If the first is retired or unavailable to your key, the
-# client falls through to the next rather than dying - free-tier model names do
-# get rotated.
+# client falls through to the next rather than dying - free-tier model names DO
+# get rotated, and a retired name returns 404 rather than anything friendlier.
+#
+# Discover what your own key can reach with:
+#     python src/llm.py --list-models
+#
+# Note that listing is not proof of access: models/gemini-2.5-flash appears in
+# the list response but returns
+#     404 "no longer available to new users"
+# when actually called. Only a real call tells you the truth, which is why this
+# is a fallthrough list rather than a single pinned name.
 GEMINI_MODEL_CANDIDATES = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
     "gemini-flash-latest",
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash-lite",
 ]
 GROQ_MODEL_CANDIDATES = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
 ]
+
+# The SDK's default HTTP timeout is too aggressive for these models: every
+# gemini-3.x flash call returned 504 DEADLINE_EXCEEDED at 30s, which looks
+# exactly like "this model is broken" but is really "it had not finished
+# thinking yet". At 150s the same calls succeed in 3-8s.
+HTTP_TIMEOUT_MS = 150_000
+
+# Gemini 3.x models reason before answering, and those reasoning tokens are
+# drawn from max_output_tokens. A request with max_output_tokens=300 can spend
+# the entire budget thinking and return an EMPTY string - no error, just nothing.
+# This floor makes sure there is always room for an actual answer after thinking.
+MIN_OUTPUT_TOKENS = 1024
 
 _keys_loaded = False
 
@@ -137,7 +158,11 @@ class LLMClient:
     def _gemini(self):
         if self._gemini_client is None:
             from google import genai
-            self._gemini_client = genai.Client(api_key=self.gemini_key)
+            from google.genai import types
+            self._gemini_client = genai.Client(
+                api_key=self.gemini_key,
+                http_options=types.HttpOptions(timeout=HTTP_TIMEOUT_MS),
+            )
         return self._gemini_client
 
     def _groq(self):
@@ -160,7 +185,13 @@ class LLMClient:
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         temperature=temperature,
-                        max_output_tokens=max_tokens,
+                        max_output_tokens=max(max_tokens, MIN_OUTPUT_TOKENS),
+                        # "low" rather than the default: this is a grounded
+                        # extraction-and-citation task, not a reasoning puzzle -
+                        # the evidence is already in the prompt. Low thinking
+                        # more than halves latency (7.2s -> 3.1s per call), which
+                        # matters when Phase 7 makes ~80 calls in a run.
+                        thinking_config=types.ThinkingConfig(thinking_level="low"),
                     ),
                 )
                 # Remember the model that worked so later calls skip the probing.
@@ -168,7 +199,10 @@ class LLMClient:
                 text = (response.text or "").strip()
                 if text:
                     return text
-                raise RuntimeError("Gemini returned an empty response")
+                raise RuntimeError(
+                    "Gemini returned an empty response (thinking may have consumed "
+                    "the whole output budget - raise max_tokens)"
+                )
             except Exception as exc:  # noqa: BLE001 - we classify below
                 message = str(exc).lower()
                 last_error = exc
@@ -249,7 +283,13 @@ class LLMClient:
                     transient = any(
                         marker in lowered
                         for marker in ("429", "rate", "quota", "timeout", "503",
-                                       "overloaded", "unavailable", "500")
+                                       "overloaded", "unavailable", "500",
+                                       # 504 DEADLINE_EXCEEDED shows up regularly
+                                       # on the flash models and clears on retry;
+                                       # without these markers it was treated as a
+                                       # hard failure and skipped straight to the
+                                       # fallback provider.
+                                       "504", "deadline", "empty response")
                     )
                     if transient and attempt < retries - 1:
                         delay = (2 ** attempt) + random.uniform(0, 1)
@@ -275,7 +315,23 @@ def get_llm(**kwargs) -> LLMClient:
     return _shared_client
 
 
+def list_gemini_models(client: LLMClient) -> list[str]:
+    """Every model this key can call generateContent on."""
+    from google import genai
+    from google.genai import types
+
+    raw = genai.Client(api_key=client.gemini_key,
+                       http_options=types.HttpOptions(timeout=HTTP_TIMEOUT_MS))
+    names = []
+    for model in raw.models.list():
+        if "generateContent" in (getattr(model, "supported_actions", None) or []):
+            names.append(model.name)
+    return names
+
+
 if __name__ == "__main__":
+    import time
+
     from src.utils import setup_console
     setup_console()
 
@@ -286,8 +342,20 @@ if __name__ == "__main__":
         print("\n" + LLMClient.setup_hint())
         raise SystemExit(0)
 
+    if "--list-models" in sys.argv:
+        print("\nModels this key can call:")
+        for name in list_gemini_models(llm):
+            marker = "  <- in candidate list" if any(
+                c in name for c in GEMINI_MODEL_CANDIDATES) else ""
+            print(f"   {name}{marker}")
+        print("\nNOTE: appearing here does not guarantee access - some listed "
+              "models still return 404 on call.")
+        raise SystemExit(0)
+
     print("\nSending a test prompt ...")
+    started = time.time()
     reply = llm.generate("Reply with exactly: KG-RAG LLM connection OK", max_tokens=50)
     print(f"  provider used: {llm.last_provider}")
     print(f"  model:         {llm.gemini_model or llm.groq_model}")
+    print(f"  latency:       {time.time() - started:.1f}s")
     print(f"  response:      {reply}")

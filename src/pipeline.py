@@ -54,7 +54,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.llm import LLMUnavailable, get_llm  # noqa: E402
 from src.utils import banner, setup_console  # noqa: E402
 
-DEFAULT_TOP_K = 8
+# 12 rather than 8. Multi-hop questions in this domain are usually COMPOUND -
+# "which models outperform X, AND who proposed them" is two sub-questions sharing
+# one evidence budget. With 8 slots the first half filled every one, pushing the
+# authorship edges (which were correctly retrieved, at ranks 8-11) below the
+# cutoff, and the model then reported that the authors were not in the evidence.
+# Query decomposition is the real fix and is listed in the README's future work;
+# a slightly larger budget is the cheap version.
+DEFAULT_TOP_K = 12
 
 
 def merge_timings(left: dict | None, right: dict | None) -> dict:

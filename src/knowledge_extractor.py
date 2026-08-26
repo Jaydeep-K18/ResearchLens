@@ -89,6 +89,206 @@ def is_useful_sentence(text: str) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Paper metadata: title and authors
+# ---------------------------------------------------------------------------
+#
+# WHY THIS IS A SEPARATE MECHANISM FROM THE SENTENCE EXTRACTORS
+#
+# Both relation extractors read SENTENCES, and authorship is almost never stated
+# in one. A paper does not say "Mask R-CNN was proposed by He et al." - it says
+# "we propose", and prints the authors in a title block that is not a sentence at
+# all. The references section would have carried that information, but Phase 1
+# deliberately strips it (it was drowning both memories in citation soup).
+#
+# The result, before this function existed: the pipeline answered "which models
+# outperform Faster R-CNN, and who proposed them?" with the models correctly
+# cited and "the provided evidence does not state or name the authors". Honest,
+# and a direct miss on one of the project's stated use cases.
+#
+# So authors are read from the title block instead, and joined to the rest of the
+# graph through a paper node:
+#
+#     Kaiming He --[authored]--> "Mask R-CNN" --[presents]--> Mask R-CNN
+#                                (paper node)                 (model entity)
+#
+# which makes "who proposed the model that beat X" a walkable chain.
+
+_SECTION_HEADINGS = {
+    "introduction", "abstract", "related work", "background", "method",
+    "methods", "conclusion", "results", "experiments", "contents",
+}
+
+# The surname must be Capitalised-then-LOWERCASE. That single constraint rejects
+# the model names that kept being read as authors - "Fast R-CNN", "Mask R-CNN" -
+# because "R-CNN" has no lowercase run after its capital letter.
+_AUTHOR_NAME_RE = re.compile(
+    r"\b[A-Z][a-z]{1,15}"                    # first name
+    r"(?:\s+[A-Z]\.)?"                       # optional middle initial
+    r"\s+[A-Z][a-zÀ-ÿ'´]{1,20}\b"           # surname, accents allowed
+)
+
+# Words that make a capitalised pair an institution, not a person.
+_AFFILIATION_WORDS = {
+    "research", "university", "institute", "lab", "labs", "laboratory",
+    "college", "school", "department", "technology", "inc", "corporation",
+    "google", "microsoft", "facebook", "meta", "openai", "nvidia", "deepmind",
+    "brain", "ai", "intelligence", "science", "sciences", "center", "centre",
+    "academy", "corp", "team", "group", "berkeley", "stanford", "mit", "toronto",
+    "equal", "contribution", "correspondence", "author", "work", "done",
+}
+
+# Ordinary English words that the "Capitalised Capitalised" pattern happily
+# matches inside a title or a sentence: "Attention Is", "Deep Residual",
+# "Region Proposal". Widening the scan window to catch awkward layouts means
+# more prose is in range, so these have to be excluded explicitly.
+_NON_NAME_WORDS = {
+    "is", "are", "was", "were", "all", "you", "need", "the", "a", "an", "and",
+    "or", "for", "with", "using", "towards", "real", "time", "deep", "residual",
+    "learning", "image", "recognition", "object", "detection", "region",
+    "proposal", "networks", "network", "transformer", "transformers", "attention",
+    "incremental", "improvement", "hierarchical", "vision", "shifted", "window",
+    "windows", "end", "words", "scale", "self", "mask", "faster", "swin",
+    "introduction", "abstract", "figure", "table", "we", "our", "this", "that",
+    "in", "on", "at", "by", "of", "to", "from", "code", "models", "available",
+    # Technical noun pairs from abstracts that also pass the name shape:
+    # "Index Terms", "Convolutional Neural", "Selective Search".
+    "index", "terms", "convolutional", "neural", "selective", "search",
+    "visual", "computing", "fully", "fast", "sparse", "dense", "feature",
+    "pyramid", "single", "shot", "multi", "box", "boxes", "state", "art",
+    "keywords", "contents", "supplementary", "material", "appendix",
+    # Conference/venue footers: "31st Conference on Neural Information
+    # Processing Systems (NIPS 2017), Long Beach, CA, USA".
+    "processing", "systems", "conference", "proceedings", "nips", "neurips",
+    "advances", "annual", "beach", "long", "usa", "ca", "workshop", "published",
+    "preprint", "under", "review", "submitted",
+}
+
+
+def extract_paper_metadata(doc: dict, max_authors: int = 12) -> tuple[str, list[str]]:
+    """
+    Read a paper's title and author list from its first page.
+
+    Returns (title, authors). Either may be empty if the layout defeats us -
+    this is a best-effort heuristic over the one region of a paper that is
+    reliably formatted the same way across arXiv preprints.
+    """
+    if not doc.get("pages"):
+        return "", []
+
+    # Scan a generous window of the first page rather than "everything before
+    # the abstract". Three different real layouts break the narrower rule:
+    #   faster_rcnn  title wraps across two lines, authors on the third
+    #   attention    one author per line, interleaved with affiliation lines
+    #   vision_transformer  two-column reading order puts the whole author block
+    #                       AFTER the abstract and introduction
+    lines = [
+        line.strip() for line in doc["pages"][0].split("\n")
+        if line.strip() and not line.strip().lower().startswith("arxiv:")
+    ]
+    if not lines:
+        return "", []
+
+    # Title: the first line, plus a continuation line if the title clearly wraps
+    # ("Faster R-CNN: Towards Real-Time Object" / "Detection with Region
+    # Proposal Networks"). A continuation is short, has no author names in it,
+    # and does not end the sentence.
+    title = lines[0].strip(" .,")
+    if len(lines) > 1:
+        following = lines[1].strip()
+        is_section_heading = (
+            len(following.split()) == 1
+            or following.lower().strip(" .:") in _SECTION_HEADINGS
+        )
+        if (len(following) < 70 and not is_section_heading
+                and not _AUTHOR_NAME_RE.search(following)):
+            title = f"{title} {following}".strip(" .,")
+
+    # The author block is CONTIGUOUS: names appear together near the top and
+    # then stop. Everything that looked like a name further down the page was
+    # prose ("Index Terms", "Selective Search", "Long Beach" from a venue line).
+    # So we stop once names run out - but tolerate a two-line gap, because
+    # Attention Is All You Need interleaves an affiliation line between every
+    # pair of author lines.
+    authors: list[str] = []
+    gap = 0
+    for line in lines[1:16]:
+        cleaned = re.sub(r"\{[^}]*\}", " ", line)          # {a,b}@microsoft.com
+        cleaned = re.sub(r"\S+@\S+", " ", cleaned)         # bare emails
+        cleaned = re.sub(r"[∗†‡*¹²³]", " ", cleaned)
+
+        found_here = 0
+        for match in _AUTHOR_NAME_RE.finditer(cleaned):
+            name = re.sub(r"\s+", " ", match.group(0)).strip()
+            words = {word.lower().strip(".") for word in name.split()}
+            if words & _AFFILIATION_WORDS or words & _NON_NAME_WORDS:
+                continue                   # "Microsoft Research", "Attention Is"
+            found_here += 1
+            if name not in authors:
+                authors.append(name)
+            if len(authors) >= max_authors:
+                return title, authors
+
+        if found_here:
+            gap = 0
+        elif authors:
+            gap += 1
+            # Tolerate three name-free lines, not two: Attention Is All You Need
+            # puts TWO affiliation lines between consecutive author lines, so a
+            # tighter gap stopped after the first two of its eight authors.
+            if gap >= 3:
+                break
+
+    return title, authors
+
+
+def build_metadata_triples(docs: list[dict], triples: list[dict],
+                           top_entities: int = 6) -> list[dict]:
+    """
+    Turn each paper's title/author block into triples, and attach the paper node
+    to the entities that paper is actually about.
+
+    The "presents" edges are what connect this metadata to the rest of the graph.
+    Without them the authors would sit in their own little island, connected to a
+    title node and nothing else - technically extracted, but unreachable from any
+    question about a model.
+    """
+    metadata_triples: list[dict] = []
+
+    # Which entities does each paper talk about most? Reuse the triples we
+    # already extracted rather than re-reading the text.
+    mentions: dict[str, Counter] = {}
+    for triple in triples:
+        counter = mentions.setdefault(triple["source_file"], Counter())
+        counter[triple["subject"]] += 1
+        counter[triple["object"]] += 1
+
+    for doc in docs:
+        title, authors = extract_paper_metadata(doc)
+        if not title:
+            continue
+
+        sentence = f"{title}. Authors: {', '.join(authors)}." if authors else title
+
+        for author in authors:
+            metadata_triples.append({
+                "subject": author, "relation": "authored", "object": title,
+                "source_file": doc["filename"], "page": 1,
+                "sentence": sentence, "extractor": "metadata",
+            })
+
+        for entity, _count in mentions.get(doc["filename"], Counter()).most_common(top_entities):
+            if entity.strip().lower() == title.strip().lower():
+                continue
+            metadata_triples.append({
+                "subject": title, "relation": "presents", "object": entity,
+                "source_file": doc["filename"], "page": 1,
+                "sentence": sentence, "extractor": "metadata",
+            })
+
+    return metadata_triples
+
+
 def split_into_sentences(docs: list[dict], nlp) -> list[dict]:
     """
     Split every document into sentences, keeping the page each one came from.
@@ -231,6 +431,12 @@ def extract_all(
         elapsed = time.time() - started
         per_sentence = elapsed / max(len(remaining), 1)
         print(f"  REBEL finished in {elapsed / 60:.1f} min ({per_sentence:.2f}s/sentence)")
+
+    # ---- paper titles and authors (cheap, and runs last so the "presents"
+    # edges can be aimed at whichever entities the extractors actually found)
+    metadata = build_metadata_triples(docs, triples)
+    triples.extend(metadata)
+    print(f"\n  {len(metadata):,} metadata triples (paper titles, authorship)")
 
     return triples
 

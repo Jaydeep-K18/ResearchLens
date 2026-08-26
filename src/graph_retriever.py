@@ -60,6 +60,21 @@ _RELATION_CUES: dict[str, tuple[str, ...]] = {
     "evaluated_on": ("evaluated", "benchmark", "tested", "dataset", "evaluation"),
     "proposes": ("propose", "author", "who wrote", "introduced by", "created by",
                  "researcher", "developed by", "behind"),
+    # Authorship arrives by two different routes and BOTH have to be cued.
+    # "proposes" comes from sentences ("X was proposed by Y"); "authored" comes
+    # from the paper title block. Cueing only the first meant every author edge
+    # took the -0.15 non-matching-relation penalty and never reached the top-8,
+    # so the pipeline kept answering "the evidence does not name the authors"
+    # while the answer sat one hop away in the graph.
+    "authored": ("author", "who wrote", "propose", "researcher", "behind",
+                 "co-authored", "wrote", "created by", "developed by", "team"),
+    # NOTE: "presents" is deliberately NOT cued. It is the structural link
+    # joining a paper node to the entities it discusses - plumbing that makes
+    # authorship reachable, not a fact anyone asks about. Giving it the same
+    # cue words as "authored" put three presents edges in ranks 0-2 and buried
+    # every real author edge below the top-8 cutoff, so the pipeline still
+    # answered "the evidence does not name the authors" with the authors sitting
+    # two hops away.
     "introduces": ("introduce", "present", "contribute"),
     "uses": ("use", "employ", "based on", "rely", "component", "architecture"),
     "extends": ("extend", "build on", "improve", "successor", "variant"),
