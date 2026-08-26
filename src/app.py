@@ -167,7 +167,7 @@ def render_sidebar() -> dict:
     )
 
     if uploads and st.sidebar.button("Process documents", type="primary",
-                                     use_container_width=True):
+                                     width='stretch'):
         process_uploads(uploads, run_rebel)
 
     st.sidebar.divider()
@@ -175,7 +175,12 @@ def render_sidebar() -> dict:
     # ---- retrieval settings ----
     st.sidebar.subheader("Retrieval settings")
     settings = {
-        "top_k": st.sidebar.slider("Results sent to the LLM", 3, 15, 8),
+        # Default 12, not 8: compound questions ("which models beat X, AND who
+        # proposed them") split one evidence budget across two sub-questions.
+        # At 8, correctly-retrieved author edges were verified in testing to
+        # rank 8-11 - just past the cutoff - so the pipeline reported "the
+        # evidence does not name the authors" with the answer one slot away.
+        "top_k": st.sidebar.slider("Results sent to the LLM", 3, 15, 12),
         "vector_k": st.sidebar.slider("Vector candidates", 5, 25, 10),
         "hops": st.sidebar.slider("Graph hops", 1, 3, 2,
                                   help="How far to walk from the query entities. "
@@ -381,7 +386,7 @@ def render_state(state: dict, elapsed: float) -> None:
                 "source": f"{item['source_file']} p.{item.get('page')}",
             })
         if rows:
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width='stretch', hide_index=True)
 
 
 def render_comparison(question: str, settings: dict) -> None:
@@ -560,7 +565,7 @@ def render_eval_tab() -> None:
             "delta": entry["delta_overall"],
             "graph share": f"{entry['graph_share']:.0%}",
         })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width='stretch', hide_index=True)
 
     st.markdown("A near-zero delta on **simple** questions is the correct result - "
                 "it means adding the graph did not damage what already worked. "
