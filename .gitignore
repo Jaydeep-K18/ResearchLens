@@ -13,7 +13,10 @@ venv/
 data/raw/
 data/chroma_db/
 data/processed/
-data/eval_results.json
+# NOT ignored: data/eval_results*.json (~85KB each).
+# These are the evidence behind every number in the README - the actual answers
+# both systems gave, and the judge's per-question reasoning. A results table
+# nobody can check is just an assertion, so they are committed on purpose.
 
 # OS / editor
 .DS_Store

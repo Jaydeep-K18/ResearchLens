@@ -52,10 +52,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.llm import LLMUnavailable, get_llm  # noqa: E402
 from src.utils import EVAL_RESULTS_PATH, banner, setup_console  # noqa: E402
 
-# Free-tier Gemini Flash allows roughly 15 requests/minute. A full run is
-# ~80 calls (20 questions x 2 systems x [answer + judge]), so we pace ourselves
-# rather than relying on the retry logic to absorb a wall of 429s.
-DEFAULT_DELAY = 4.0
+# A full run is ~80 calls (20 questions x 2 systems x [answer + judge]).
+#
+# MEASURED FREE-TIER QUOTAS (2026-08, and they will drift):
+#   gemini-3.6-flash        20 requests PER DAY. Not per minute - it was still
+#                           429ing ten minutes after exhaustion. A single eval
+#                           run cannot fit in it, which is why --model defaults
+#                           to a -lite model instead.
+#   gemini-3.5-flash-lite   comfortably handles a burst of 8 back-to-back calls
+#                           and a full 80-call run.
+#
+# The delay is therefore modest; the real protection is model choice plus the
+# fail-fast guard in run_evaluation().
+DEFAULT_DELAY = 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -305,8 +314,20 @@ def parse_judge_response(text: str) -> dict:
 
 def judge_answer(question: str, expected: str, answer: str, delay: float) -> dict:
     if not answer or not answer.strip():
-        return {"correctness": 1, "completeness": 1, "citation_accuracy": 1,
-                "reason": "system produced no answer", "parse_failed": False}
+        # parse_failed=True is deliberate and important. An empty answer is not
+        # a system that scored badly - it is a system that never ran, almost
+        # always because the API quota was exhausted. Scoring it 1/5 silently
+        # converts an infrastructure failure into a data point, and the average
+        # of enough 1.0s looks exactly like a real (bad) result.
+        #
+        # This is not hypothetical: the first full run here exhausted its quota
+        # at question 4 and reported "medium 1.00, hard 1.00" for BOTH systems,
+        # which reads as a finding and is actually 17 failed API calls.
+        # summarise() excludes parse_failed records from the averages.
+        return {"correctness": 0, "completeness": 0, "citation_accuracy": 0,
+                "reason": "NO ANSWER PRODUCED - generation failed (quota/API error), "
+                          "not a low-quality answer",
+                "parse_failed": True}
 
     llm = get_llm()
     prompt = JUDGE_PROMPT.format(question=question, expected=expected, answer=answer)
@@ -326,7 +347,9 @@ def judge_answer(question: str, expected: str, answer: str, delay: float) -> dic
 # ---------------------------------------------------------------------------
 
 def run_evaluation(limit: int | None = None, delay: float = DEFAULT_DELAY,
-                   difficulties: set[str] | None = None) -> dict:
+                   difficulties: set[str] | None = None,
+                   model: str | None = None,
+                   basic_top_k: int = 5) -> dict:
     from src.basic_rag import answer_question
     from src.pipeline import KGRagPipeline
     from src.vector_store import VectorStore
@@ -334,6 +357,15 @@ def run_evaluation(limit: int | None = None, delay: float = DEFAULT_DELAY,
     llm = get_llm()
     if not llm.available:
         raise SystemExit(llm.setup_hint())
+
+    # Pin ONE model for the whole run. The client normally falls through to
+    # another model when one is exhausted, which is the right behaviour for
+    # interactive use and the wrong behaviour here: if basic RAG is answered by
+    # one model and KG-RAG by another, the comparison measures the models rather
+    # than the retrieval architectures. The same applies to the judge.
+    if model:
+        llm.gemini_model = model
+        print(f"Pinned model for this run: {model}")
 
     store = VectorStore()
     if store.count() == 0:
@@ -352,12 +384,14 @@ def run_evaluation(limit: int | None = None, delay: float = DEFAULT_DELAY,
     print(f"Estimated time: {len(questions) * 4 * (delay + 2) / 60:.0f} minutes\n")
 
     records: list[dict] = []
+    consecutive_failures = 0
 
     for index, item in enumerate(questions, start=1):
         print(f"[{index}/{len(questions)}] ({item['difficulty']}) {item['question'][:70]}...")
 
         # --- basic RAG ---------------------------------------------------
-        basic = answer_question(item["question"], store, show_chunks=False)
+        basic = answer_question(item["question"], store, top_k=basic_top_k,
+                                show_chunks=False)
         time.sleep(delay)
         basic_scores = judge_answer(item["question"], item["expected"],
                                     basic.get("answer", ""), delay)
@@ -367,6 +401,27 @@ def run_evaluation(limit: int | None = None, delay: float = DEFAULT_DELAY,
         time.sleep(delay)
         kgrag_scores = judge_answer(item["question"], item["expected"],
                                     state.get("answer", ""), delay)
+
+        # --- fail fast rather than fabricate ------------------------------
+        # If BOTH systems produced nothing, the API is down or out of quota.
+        # Continuing produces a full results file of zeros that looks like a
+        # completed evaluation. Better to stop and say so.
+        if not basic.get("answer") and not state.get("answer"):
+            consecutive_failures += 1
+            print(f"      !! both systems returned nothing "
+                  f"({consecutive_failures} in a row)")
+            print(f"         basic: {str(basic.get('error'))[:150]}")
+            print(f"         kgrag: {str(state.get('error'))[:150]}")
+            if consecutive_failures >= 3:
+                raise SystemExit(
+                    "\nABORTING: three consecutive questions produced no answer from "
+                    "either system.\nThis is an API failure (usually free-tier quota), "
+                    "not a result. Partial\nscores would be meaningless, so nothing has "
+                    "been saved.\n\nCheck remaining quota with:  python src/llm.py\n"
+                    "Free-tier quota resets daily; --delay 10 also helps."
+                )
+        else:
+            consecutive_failures = 0
 
         reranked = state.get("reranked_results") or []
         methods = [r["retrieval_method"] for r in reranked]
@@ -380,6 +435,7 @@ def run_evaluation(limit: int | None = None, delay: float = DEFAULT_DELAY,
                 "answer": basic.get("answer", ""),
                 "scores": basic_scores,
                 "n_chunks": len(basic.get("chunks", [])),
+                "error": str(basic.get("error") or ""),
             },
             "kg_rag": {
                 "answer": state.get("answer", ""),
@@ -389,6 +445,7 @@ def run_evaluation(limit: int | None = None, delay: float = DEFAULT_DELAY,
                 "final_mix": {"vector": methods.count("vector"),
                               "graph": methods.count("graph")},
                 "sources": state.get("sources", []),
+                "error": str(state.get("error") or ""),
             },
         })
 
@@ -417,11 +474,16 @@ def summarise(records: list[dict]) -> dict:
 
         tier_summary: dict = {"n": len(subset)}
         for system in ("basic_rag", "kg_rag"):
+            scored = [r for r in subset if not r[system]["scores"].get("parse_failed")]
             axes = {}
             for axis in ("correctness", "completeness", "citation_accuracy"):
-                axes[axis] = _mean([r[system]["scores"][axis] for r in subset
-                                    if not r[system]["scores"].get("parse_failed")])
+                axes[axis] = _mean([r[system]["scores"][axis] for r in scored])
             axes["overall"] = _mean(list(axes.values()))
+            # How many questions actually produced a scoreable answer. A tier
+            # whose mean rests on 2 of 7 questions is not comparable to one
+            # resting on 7 of 7, and the mean alone hides that completely.
+            axes["scored"] = len(scored)
+            axes["failed"] = len(subset) - len(scored)
             tier_summary[system] = axes
 
         tier_summary["delta_overall"] = round(
@@ -440,9 +502,10 @@ def summarise(records: list[dict]) -> dict:
 
 def print_summary(summary: dict) -> None:
     print(banner("RESULTS: BASIC RAG vs KG-RAG"))
-    print(f"  {'tier':<9}{'n':>3}   {'basic':>7}{'kg-rag':>9}{'delta':>8}   "
+    print(f"  {'tier':<9}{'n':>3}{'scored':>8}   {'basic':>7}{'kg-rag':>9}{'delta':>8}   "
           f"{'graph share':>12}")
-    print("  " + "-" * 56)
+    print("  " + "-" * 64)
+    total_failed = 0
     for tier in ("simple", "medium", "hard", "ALL"):
         if tier not in summary:
             continue
@@ -450,9 +513,20 @@ def print_summary(summary: dict) -> None:
         basic = data["basic_rag"]["overall"]
         kgrag = data["kg_rag"]["overall"]
         delta = data["delta_overall"]
+        scored = data["kg_rag"]["scored"]
+        failed = data["kg_rag"]["failed"]
+        if tier != "ALL":
+            total_failed += failed
         marker = "  <--" if tier == "hard" and delta > 0.5 else ""
-        print(f"  {tier:<9}{data['n']:>3}   {basic:>7.2f}{kgrag:>9.2f}{delta:>+8.2f}   "
-              f"{data['graph_share']:>11.0%}{marker}")
+        print(f"  {tier:<9}{data['n']:>3}{scored:>8}   {basic:>7.2f}{kgrag:>9.2f}"
+              f"{delta:>+8.2f}   {data['graph_share']:>11.0%}{marker}")
+
+    if total_failed:
+        print(f"\n  [!] {total_failed} question(s) produced NO answer and are excluded "
+              f"from the means.")
+        print("      That is an API failure, not a score. These results are "
+              "incomplete - re-run\n      when quota resets before quoting any "
+              "number from this table.")
 
     print(banner("BREAKDOWN BY AXIS"))
     for tier in ("simple", "medium", "hard", "ALL"):
@@ -477,6 +551,15 @@ def main() -> None:
     parser.add_argument("--difficulty", nargs="+",
                         choices=["simple", "medium", "hard"],
                         help="only run these tiers")
+    parser.add_argument("--basic-top-k", type=int, default=5,
+                        help="evidence items given to BASIC RAG. Set equal to KG-RAG's "
+                             "top_k to control for context budget and isolate what the "
+                             "graph itself contributes")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="where to write results (default data/eval_results.json)")
+    parser.add_argument("--model", default="gemini-3.5-flash-lite",
+                        help="pin one Gemini model for the whole run so both systems "
+                             "and the judge are scored identically")
     parser.add_argument("--report-only", action="store_true",
                         help="re-print the summary from a saved eval_results.json")
     args = parser.parse_args()
@@ -493,16 +576,23 @@ def main() -> None:
         limit=args.limit,
         delay=args.delay,
         difficulties=set(args.difficulty) if args.difficulty else None,
+        model=args.model,
+        basic_top_k=args.basic_top_k,
     )
+    output["meta_config"] = {"model": args.model, "basic_top_k": args.basic_top_k}
     output["meta"] = {
         "questions": len(output["results"]),
         "elapsed_minutes": round((time.time() - started) / 60, 1),
     }
 
-    EVAL_RESULTS_PATH.write_text(
+    # Honour --output. Without this the controlled run silently overwrote the
+    # headline run's results file, destroying 20 questions of per-question
+    # evidence that had taken ~10 minutes of API calls to produce.
+    destination = args.output or EVAL_RESULTS_PATH
+    destination.write_text(
         json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    print(f"\nSaved per-question results to {EVAL_RESULTS_PATH}")
+    print(f"\nSaved per-question results to {destination}")
 
     print_summary(output["summary"])
 

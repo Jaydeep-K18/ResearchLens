@@ -196,3 +196,46 @@ def test_empty_tier_is_omitted_rather_than_reported_as_zero():
     summary = summarise([record("simple", 4, 4)])
     assert "hard" not in summary
     assert "simple" in summary
+
+
+# ---------------------------------------------------------------------------
+# Failed generations must never be scored as bad answers
+# ---------------------------------------------------------------------------
+
+def test_empty_answer_is_marked_failed_not_scored_one():
+    """
+    The most important property in this file.
+
+    An empty answer means generation never ran - almost always an exhausted API
+    quota. Scoring it 1/5 turns an infrastructure failure into a data point, and
+    a column of 1.0s reads exactly like a real (bad) result.
+
+    The first full run here hit its quota at question 4 and reported
+    "medium 1.00, hard 1.00" for BOTH systems. That is 17 failed API calls
+    wearing the costume of a finding.
+    """
+    from src.evaluate import judge_answer
+
+    scores = judge_answer("q", "expected", "", delay=0)
+    assert scores["parse_failed"] is True
+    assert scores["correctness"] == 0
+    assert "NO ANSWER" in scores["reason"]
+
+
+def test_failed_generations_are_excluded_from_the_means():
+    good = record("hard", 4, 4)
+    failed = record("hard", 0, 0)
+    for system in ("basic_rag", "kg_rag"):
+        failed[system]["scores"]["parse_failed"] = True
+
+    summary = summarise([good, failed])
+    assert summary["hard"]["kg_rag"]["overall"] == 4.0     # not (4+0)/2
+    assert summary["hard"]["kg_rag"]["scored"] == 1
+    assert summary["hard"]["kg_rag"]["failed"] == 1
+
+
+def test_summary_reports_how_many_questions_were_actually_scored():
+    records = [record("simple", 4, 4), record("simple", 3, 5)]
+    summary = summarise(records)
+    assert summary["simple"]["kg_rag"]["scored"] == 2
+    assert summary["simple"]["kg_rag"]["failed"] == 0

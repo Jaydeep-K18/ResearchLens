@@ -6,24 +6,24 @@
       "question": "What is the main architectural innovation of the Transformer?",
       "expected": "The Transformer dispenses with recurrence and convolutions entirely and relies solely on attention mechanisms, specifically multi-head self-attention, to draw global dependencies between input and output. This makes it far more parallelisable than RNN-based models.",
       "basic_rag": {
-        "answer": "Based on the provided context, there is no mention of the \"main architectural innovation of the Transformer.\" The text only mentions specific contributions by individuals, such as Noam proposing \"scaled dot-product attention, multi-head attention and the parameter-free position representation\" [Source: attention_is_all_you_need.pdf, p.1], and architectural variations evaluated for translation performance [Source: attention_is_all_you_need.pdf, p.8]. Therefore, the context does not contain enough information to answer what the main architectural innovation is.",
+        "answer": "Based on the provided context, there is no mention of the \"main architectural innovation of the Transformer.\" The context discusses specific components and contributions such as scaled dot-product attention, multi-head attention, and the parameter-free position representation [Source: attention_is_all_you_need.pdf, p.1], but it does not explicitly state the main architectural innovation. Therefore, the CONTEXT does not contain enough information to answer this question.",
         "scores": {
           "correctness": 2,
           "completeness": 1,
-          "citation_accuracy": 5,
-          "reason": "The system correctly identified that the provided context lacked the full answer, but failed to provide the actual architectural innovation, scoring low on correctness and completeness while properly using citations for what it did state.",
+          "citation_accuracy": 3,
+          "reason": "The system correctly identified that the context lacked the direct synthesis, but failed to answer the question using general knowledge or available details, resulting in an unhelpful response.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the main architectural innovation of the Transformer is that it is based solely on attention mechanisms, dispensing with recurrence and convolutions entirely [Source: attention_is_all_you_need.pdf, p.1]. It replaces the recurrent layers most commonly used in encoder-decoder architectures with multi-headed self-attention [Source: attention_is_all_you_need.pdf, p.10].",
+        "answer": "Based on the provided evidence, the Transformer is a network architecture that is based solely on attention mechanisms, dispensing with recurrence and convolutions entirely [Source: attention_is_all_you_need.pdf, p.1]. It replaces the recurrent layers most commonly used in encoder-decoder architectures with multi-headed self-attention [Source: attention_is_all_you_need.pdf, p.10].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately captures all core facts from the reference, covers the key points thoroughly, and includes precise and plausible source citations.",
+          "reason": "The system answer accurately captures the core architectural innovation, covers all key points from the reference answer, and includes proper source citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -107,24 +107,24 @@
       "question": "What BLEU score does the Transformer achieve on the WMT 2014 English-to-German translation task?",
       "expected": "The big Transformer model achieves 28.4 BLEU on WMT 2014 English-to-German, improving over the previous best results including ensembles by over 2 BLEU.",
       "basic_rag": {
-        "answer": "Based on the provided context, the Transformer achieves a BLEU score of 28.4 on the WMT 2014 English-to-German translation task [Source: attention_is_all_you_need.pdf, p.1].",
+        "answer": "Based on the provided context, the Transformer achieves a BLEU score of 28.4 on the WMT 2014 English-to-German translation task [Source: attention_is_all_you_need.pdf, p. 1, 6].",
         "scores": {
           "correctness": 5,
-          "completeness": 5,
+          "completeness": 4,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately states the BLEU score, covers the key points of the reference answer, and includes a proper citation.",
+          "reason": "The system accurately states the BLEU score of 28.4, captures the main result from the reference answer while omitting the secondary detail about ensembles, and provides correct source citations.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the Transformer achieves a BLEU score of 28.4 on the WMT 2014 English-to-German translation task [Source: attention_is_all_you_need.pdf, p.1, p.8].",
+        "answer": "The Transformer achieves a BLEU score of 28.4 on the WMT 2014 English-to-German translation task [Source: attention_is_all_you_need.pdf, p.1, p.8].",
         "scores": {
           "correctness": 5,
-          "completeness": 5,
+          "completeness": 4,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately provides the correct BLEU score, captures the key information from the reference, and includes proper source citations.",
+          "reason": "The system answer correctly states the BLEU score of 28.4 and provides appropriate citations, though it omits the mention of it being the 'big' model and the improvement over previous ensembles found in the reference.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -187,24 +187,24 @@
       "question": "What problem do residual connections in ResNet solve?",
       "expected": "They address the degradation problem: as plain deep networks get deeper, training accuracy saturates and then degrades - not from overfitting. Residual connections let layers fit a residual mapping F(x) = H(x) - x, making very deep networks (50-152 layers) easier to optimise.",
       "basic_rag": {
-        "answer": "Based on the provided context, residual connections ease optimization by providing faster convergence at the early stage [Source: resnet.pdf, p. 6]. Additionally, the text notes that residual functions tend to be closer to zero than non-residual functions, and with more layers, an individual layer of ResNets tends to modify the signal less [Source: resnet.pdf, p. 8]. \n\nHowever, the context does not comprehensively detail all \"optimization difficulties\" solved by residual connections (mentioning that such optimization difficulties will be studied in the future) [Source: resnet.pdf, p. 5].",
-        "scores": {
-          "correctness": 3,
-          "completeness": 2,
-          "citation_accuracy": 5,
-          "reason": "The system answer mentions ease of optimization but misses the core degradation problem specified in the reference answer, though its cited facts are plausible based on its retrieval context.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, residual connections and ResNets help address the following:\n\n- **The degradation problem:** The evidence states that the 34-layer ResNet exhibits considerably lower training error and better generalizability to validation data, indicating that \"the degradation problem is well addressed\" [Source: resnet.pdf, p. 5]. \n- **Optimization difficulties and convergence:** ResNets manage to \"overcome the optimization difficulty\" and demonstrate accuracy gains as depth increases [Source: resnet.pdf, p. 7], as well as easing optimization by providing \"faster convergence at the early stage\" [Source: resnet.pdf, p. 6].",
+        "answer": "Based on the provided context, residual connections address the \"degradation problem\" (where training error increases as network depth increases) [Source: resnet.pdf, p.5, 7] and optimization difficulties [Source: resnet.pdf, p.6], allowing deeper networks to demonstrate accuracy gains [Source: resnet.pdf, p.6, 7].",
         "scores": {
           "correctness": 5,
           "completeness": 4,
           "citation_accuracy": 5,
-          "reason": "The system accurately identifies the degradation problem and optimization difficulties mentioned in the reference answer, provides proper citations, and only misses the specific mathematical formulation of the residual mapping.",
+          "reason": "The system accurately identifies the degradation problem and optimization difficulties mentioned in the reference, though it omits the specific mathematical formulation of the residual mapping.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, residual connections in ResNet address the degradation problem [Source: resnet.pdf, p.5], ease optimization by providing faster convergence at the early stage [Source: resnet.pdf, p.6], and help overcome optimization difficulties as network depth increases [Source: resnet.pdf, p.7].",
+        "scores": {
+          "correctness": 5,
+          "completeness": 4,
+          "citation_accuracy": 5,
+          "reason": "The system answer correctly identifies the degradation problem and optimization benefits, matches most key points of the reference answer, and includes proper source citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -274,24 +274,24 @@
       "question": "How does Faster R-CNN generate region proposals?",
       "expected": "With a Region Proposal Network (RPN), a fully convolutional network that shares convolutional features with the detection network and predicts object bounds and objectness scores at each position using anchor boxes of multiple scales and aspect ratios. This makes proposals nearly cost-free.",
       "basic_rag": {
-        "answer": "Based on the provided context, Faster R-CNN generates region proposals using a first stage called a Region Proposal Network (RPN) [Source: mask_rcnn.pdf, p.3]. The RPN takes an image of any size as input and outputs a set of rectangular object proposals, each with an objectness score [Source: faster_rcnn.pdf, p.3]. It is modeled as a fully convolutional network [Source: faster_rcnn.pdf, p.3] that learns the attention mechanism to propose candidate object bounding boxes [Source: mask_rcnn.pdf, p.2, p.3].",
-        "scores": {
-          "correctness": 5,
-          "completeness": 4,
-          "citation_accuracy": 5,
-          "reason": "The system answer correctly explains that the RPN is a fully convolutional network that outputs object proposals and scores, though it misses the specific detail about sharing convolutional features and using anchor boxes of multiple scales and aspect ratios.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, Faster R-CNN generates region proposals using a **Region Proposal Network (RPN)** [Source: faster_rcnn.pdf, p.1; Source: mask_rcnn.pdf, p.3]. \n\nSpecifically, the RPN operates as follows:\n- It is a fully convolutional network that shares full-image convolutional features with the detection network to enable nearly cost-free proposals [Source: faster_rcnn.pdf, p.1].\n- It takes an image of any size as input and uses square ($3 \\times 3$) sliding windows [Source: faster_rcnn.pdf, p.3, p.10].\n- At each sliding window position, it simultaneously predicts object bounds (rectangular object proposals) and objectness scores relative to anchors with different scales and aspect ratios [Source: faster_rcnn.pdf, p.1, p.10].",
+        "answer": "Based on the provided context, Faster R-CNN generates region proposals using a Region Proposal Network (RPN) [Source: mask_rcnn.pdf, p.3]. Specifically:\n- The RPN is a fully convolutional network that takes an image of any size as input [Source: faster_rcnn.pdf, p.3] and shares full-image convolutional features with the detection network [Source: faster_rcnn.pdf, p.1].\n- It uses square ($3\\times3$) sliding windows over the convolutional feature maps [Source: faster_rcnn.pdf, p.10].\n- At each sliding window location, it simultaneously predicts object bounds (or region bounds) and objectness scores relative to anchors with different scales and aspect ratios [Source: faster_rcnn.pdf, p.6, 10, 11].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately and completely captures all key points from the reference answer with precise details and correct citations.",
+          "reason": "The system answer is factually correct, covers all key points from the reference answer in detail, and includes accurate and plausible source citations.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, Faster R-CNN generates region proposals using its first stage, which is called a Region Proposal Network (RPN) [Source: mask_rcnn.pdf, p.3]. \n\nSpecifically:\n- The RPN is a fully convolutional network that shares full-image convolutional features with the detection network [Source: faster_rcnn.pdf, p.1, p.3].\n- It takes an input image and uses square (3×3) sliding windows to extract features [Source: faster_rcnn.pdf, p.3, p.10].\n- At each position, it simultaneously predicts object bounds (proposals relative to anchors with different scales and aspect ratios) and objectness scores [Source: faster_rcnn.pdf, p.1, p.10], outputting a set of rectangular object proposals [Source: faster_rcnn.pdf, p.3].",
+        "scores": {
+          "correctness": 5,
+          "completeness": 5,
+          "citation_accuracy": 5,
+          "reason": "The system answer accurately and comprehensively explains how Faster R-CNN generates region proposals using an RPN, covers all key points from the reference answer, and includes consistent and plausible citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -363,24 +363,24 @@
       "question": "What does Mask R-CNN add on top of Faster R-CNN?",
       "expected": "A third branch that predicts a segmentation mask for each Region of Interest, in parallel with the existing branches for classification and bounding box regression. It also replaces RoIPool with RoIAlign to fix misalignment.",
       "basic_rag": {
-        "answer": "Based on the provided context, Mask R-CNN adds a third branch on top of Faster R-CNN's existing class and box offset branches [Source: mask_rcnn.pdf, p. 3, 4]. In the second stage, in parallel to predicting the class and box offset, this third branch outputs a binary mask for each RoI (Region of Interest) / object mask [Source: mask_rcnn.pdf, p. 3, 4].",
-        "scores": {
-          "correctness": 5,
-          "completeness": 4,
-          "citation_accuracy": 5,
-          "reason": "The system answer correctly identifies the third branch for masks, though it omits the mention of RoIAlign which is present in the reference answer.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, Mask R-CNN adds the following components on top of Faster R-CNN:\n\n* **A mask branch:** Mask R-CNN adds a third branch (in parallel with the existing classification and bounding box regression branches) that outputs an object segmentation mask or binary mask for each Region of Interest (RoI) [Source: mask_rcnn.pdf, p. 1, 2, 3, 4]. This mask branch is implemented as a small FCN applied to each RoI to predict a mask in a pixel-to-pixel manner [Source: mask_rcnn.pdf, p. 3].\n* **Pixel-to-pixel alignment:** The model introduces pixel-to-pixel alignment, addressing what is described as the main missing piece of Fast and Faster R-CNN [Source: mask_rcnn.pdf, p. 3].",
+        "answer": "Based on the provided context, Mask R-CNN adds a third branch to the Faster R-CNN framework (which outputs an object mask for each RoI in parallel with the class and box offset branches) [Source: mask_rcnn.pdf, p.1, p.3, p.4, p.9]. Additionally, it uses RoIAlign for pixel-to-pixel alignment, addressing the coarse spatial quantization of RoIPool [Source: mask_rcnn.pdf, p.3, p.4, p.11].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies both the mask branch and RoIAlign (pixel-to-pixel alignment), covers all aspects of the reference answer, and includes proper citations.",
+          "reason": "The system answer accurately captures all key points from the reference answer with correct facts and proper inline citations.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, Mask R-CNN adds the following on top of Faster R-CNN:\n\n* **A third branch for object masks:** Mask R-CNN adds a third branch that outputs an object mask in parallel with the existing classification and bounding box regression branches [Source: mask_rcnn.pdf, p.3]. This mask branch is a small Fully Convolutional Network (FCN) applied to each Region of Interest (RoI) that predicts a segmentation mask in a pixel-to-pixel manner [Source: mask_rcnn.pdf, p.1].\n* **Pixel-to-pixel alignment:** It introduces pixel-to-pixel alignment as a key element to address what was missing in Fast/Faster R-CNN (which performed coarse spatial quantization for feature extraction via RoIPool) [Source: mask_rcnn.pdf, p.1, p.3].",
+        "scores": {
+          "correctness": 5,
+          "completeness": 5,
+          "citation_accuracy": 5,
+          "reason": "The system answer accurately captures all key points from the reference answer with correct facts, high completeness, and proper citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -445,24 +445,24 @@
       "question": "What is the key idea behind DETR's approach to object detection?",
       "expected": "DETR treats detection as a direct set prediction problem, using a transformer encoder-decoder with a set-based global loss that forces unique predictions via bipartite matching. This removes hand-designed components such as non-maximum suppression and anchor generation.",
       "basic_rag": {
-        "answer": "Based on the provided context, the key idea behind DETR (DEtection TRansformer) is a direct set prediction approach that views object detection as a set prediction problem [Source: detr.pdf, p.1, p.3]. Its main ingredients are:\n1. A set-based global loss that forces unique predictions via bipartite matching [Source: detr.pdf, p.1].\n2. A transformer encoder-decoder architecture that uses a fixed small set of learned object queries to reason about object relations and global image context, directly outputting the final set of predictions in parallel in a single pass [Source: detr.pdf, p.1, p.3]. \n\nAdditionally, DETR simplifies the detection pipeline by eliminating hand-designed components that encode prior knowledge, such as spatial anchors and non-maximal suppression [Source: detr.pdf, p.1, p.2].",
+        "answer": "Based on the provided context, the key idea behind DETR (DEtection TRansformer) is a new framework for direct set prediction that eliminates hand-designed components like spatial anchors or non-maximal suppression [Source: detr.pdf, p.1, p.2]. Its main ingredients are:\n1. A set-based global loss that forces unique predictions via bipartite matching, which is invariant to a permutation of predicted objects and allows them to be emitted in parallel [Source: detr.pdf, p.1, p.11].\n2. A transformer encoder-decoder architecture with non-autoregressive parallel decoding that reasons about object relations and global image context to directly output a fixed, small set of learned object queries in a single pass [Source: detr.pdf, p.1, p.3, p.11].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer is factually correct, covers all key points from the reference answer, and includes accurate and consistent source citations.",
+          "reason": "The system answer accurately captures all key points of the reference answer, includes correct technical details about DETR, and provides proper source citations.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the key idea behind DETR (DEtection TRansformer) is to frame object detection as a direct set prediction problem [Source: detr.pdf, p.1, p.4]. Its approach relies on two main ingredients:\n\n1. **A set-based global loss** (or set prediction loss) that forces unique predictions via bipartite matching between predicted and ground truth boxes [Source: detr.pdf, p.1, p.4].\n2. **A transformer encoder-decoder architecture** that uses a fixed, small set of learned object queries to reason about object relations and the global image context, allowing it to directly output the final set of predictions in parallel in a single pass [Source: detr.pdf, p.1, p.4].\n\nAdditionally, DETR eliminates the need for hand-designed components that encode task prior knowledge—such as spatial anchors or non-maximal suppression—and does not require customized layers [Source: detr.pdf, p.1, p.2].",
+        "answer": "Based on the provided evidence, the key idea behind DETR (DEtection TRansformer) is to approach object detection as a direct set prediction problem [Source: detr.pdf, p. 1, p. 4]. Its main ingredients are:\n\n1. A set-based global loss (or set prediction loss) that forces unique predictions via bipartite matching between predicted and ground-truth boxes [Source: detr.pdf, p. 1, p. 4].\n2. A transformer encoder-decoder architecture that uses a fixed small set of learned object queries to reason about object relations and global image context, allowing it to directly output the final set of predictions in parallel in a single pass [Source: detr.pdf, p. 1, p. 4].\n\nAdditionally, DETR streamlines the detection pipeline by eliminating the need for hand-designed components that encode prior knowledge, such as spatial anchors or non-maximal suppression [Source: detr.pdf, p. 2].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately captures all key ideas from the reference, provides complete coverage, and includes proper and consistent citations.",
+          "reason": "The system answer accurately captures all key points from the reference answer with high factual correctness and precise citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -553,24 +553,24 @@
       "question": "How does the Vision Transformer apply a Transformer to images?",
       "expected": "ViT splits an image into fixed-size patches, linearly embeds each patch, adds position embeddings, and feeds the resulting sequence of vectors to a standard Transformer encoder - treating image patches the same way NLP treats tokens. A classification token is prepended for the class prediction.",
       "basic_rag": {
-        "answer": "Based on the provided context, the Vision Transformer applies a Transformer to images by reshaping the 2D image $x \\in \\mathbb{R}^{H \\times W \\times C}$ into a sequence of flattened 2D patches $x_p \\in \\mathbb{R}^{N \\times (P^2 \\cdot C)}$ [Source: vision_transformer.pdf, p.3], where $(H, W)$ is the original image resolution, $C$ is the number of channels, and $(P, P)$ is the patch resolution. The standard Transformer then receives this as a 1D sequence of token embeddings [Source: vision_transformer.pdf, p.3].",
-        "scores": {
-          "correctness": 5,
-          "completeness": 4,
-          "citation_accuracy": 5,
-          "reason": "The system answer is technically correct and well-cited, though it slightly misses mentioning the prepended classification token compared to the reference.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, the Vision Transformer applies a Transformer to images in the following ways:\n\n* **Patch Extraction and Reshaping:** It reshapes an image $x \\in \\mathbb{R}^{H \\times W \\times C}$ into a sequence of flattened 2D patches $x_p \\in \\mathbb{R}^{N \\times (P^2 \\cdot C)}$, where $(H, W)$ is the original resolution, $C$ is the number of channels, $(P, P)$ is the patch resolution, and $N = HW/P^2$ is the resulting number of patches [Source: vision_transformer.pdf, p.3]. \n* **Linear Projection:** Because the Transformer uses a constant latent vector size $D$ across all of its layers, the flattened patches are mapped to $D$ dimensions using a trainable linear projection [Source: vision_transformer.pdf, p.3].\n* **Standard Transformer Encoder Processing:** It interprets the image as a sequence of patches and processes it using a standard Transformer encoder (as used in NLP) [Source: vision_transformer.pdf, p.9]. \n* **Inductive Bias Limitations:** Aside from the initial patch extraction and resolution adjustment steps, the architecture does not introduce image-specific inductive biases; these initial steps are the only points where an inductive bias about the 2D structure of the images is manually injected [Source: vision_transformer.pdf, p.4, p.9].",
+        "answer": "Based on the provided context, the Vision Transformer applies a Transformer to images by:\n\n1. Reshaping the 2D image $x \\in \\mathbb{R}^{H \\times W \\times C}$ into a sequence of flattened 2D patches $x_p \\in \\mathbb{R}^{N \\times (P^2 \\cdot C)}$, where $(H, W)$ is the original resolution, $C$ is the number of channels, $(P, P)$ is the patch resolution, and $N = HW/P^2$ is the resulting number of patches (effective input sequence length) [Source: vision_transformer.pdf, p.3].\n2. Mapping the flattened patches to $D$ dimensions using a trainable linear projection to create patch embeddings, maintaining a constant latent vector size $D$ through all layers [Source: vision_transformer.pdf, p.7].\n3. Adding positional embeddings to the patch embeddings to retain spatial information [Source: vision_transformer.pdf, p.4].\n4. Processing the resulting sequence of patches through a standard Transformer encoder (as used in NLP) without introducing additional image-specific inductive biases into the architecture beyond the initial patch extraction step [Source: vision_transformer.pdf, p.9].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately and completely explains how the Vision Transformer processes images with correct technical details, covers all key points of the reference answer, and includes proper and consistent source citations.",
+          "reason": "The system answer accurately and comprehensively covers all aspects of the reference answer while providing precise mathematical details and consistent citations.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, the Vision Transformer applies a Transformer to images in the following way:\n\n- **Patch Extraction and Reshaping:** It interprets an image as a sequence of patches rather than introducing image-specific inductive biases (apart from the initial patch extraction and resolution adjustment step) [Source: vision_transformer.pdf, p.4, p.9]. It reshapes an image $x \\in \\mathbb{R}^{H \\times W \\times C}$ into a sequence of flattened 2D patches $x_p \\in \\mathbb{R}^{N \\times (P^2 \\cdot C)}$, where $(H, W)$ is the original resolution, $C$ is the number of channels, and $(P, P)$ is the resolution of each image patch [Source: vision_transformer.pdf, p.3].\n- **Linear Projection:** It flattens the patches and maps them to a constant latent vector size $D$ dimensions using a trainable linear projection to produce patch embeddings [Source: vision_transformer.pdf, p.3, p.7]. \n- **Transformer Processing:** It processes this 1D sequence of token embeddings using a standard Transformer encoder, just like those used in Natural Language Processing (NLP) [Source: vision_transformer.pdf, p.3, p.9].",
+        "scores": {
+          "correctness": 5,
+          "completeness": 4,
+          "citation_accuracy": 5,
+          "reason": "The system answer is technically accurate and well-cited, though it slightly misses the mention of position embeddings and the classification token found in the reference answer.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -661,24 +661,24 @@
       "question": "Which models in this corpus were evaluated on the COCO dataset?",
       "expected": "DETR, Mask R-CNN, Faster R-CNN and YOLOv3 all report results on COCO. Swin Transformer also evaluates on COCO for detection and segmentation.",
       "basic_rag": {
-        "answer": "Based on the provided context, the following models were evaluated on the COCO dataset:\n\n* Faster R-CNN [Source: faster_rcnn.pdf, p.10]\n* ResNet (specifically ResNet-101) [Source: resnet.pdf, p.10]\n* DETR [Source: detr.pdf, p.8]",
+        "answer": "Based on the provided context, the following models were evaluated on the COCO dataset:\n\n* **Fast R-CNN** and **Faster R-CNN** [Source: faster_rcnn.pdf, p.10, 12]\n* **ResNet** (including ResNet-101 and network ensembles) [Source: resnet.pdf, p.10, 11]\n* **DETR** [Source: detr.pdf, p.8]\n* **Swin Transformer** (noted as \"Our best model\") [Source: swin_transformer.pdf, p.7]",
         "scores": {
-          "correctness": 4,
+          "correctness": 3,
           "completeness": 3,
           "citation_accuracy": 5,
-          "reason": "The system correctly identifies Faster R-CNN and DETR and includes citations, but misses several models mentioned in the reference answer like Mask R-CNN, YOLOv3, and Swin Transformer while including ResNet.",
+          "reason": "The system correctly identifies several models from the corpus while missing a few and including one extra (ResNet), and provides proper citations for all claims.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the following models were evaluated or experimented on the COCO dataset:\n\n- **Faster R-CNN**: Evaluated on the Microsoft COCO object detection dataset [Source: faster_rcnn.pdf, p. 10, p. 11].\n- **ResNet (ResNet-101 detection system)**: Evaluated on the MS COCO dataset, winning 1st place in the COCO 2015 detection task [Source: resnet.pdf, p. 10, p. 11].\n- **DETR**: Performed experiments on COCO 2017 detection and panoptic segmentation datasets [Source: detr.pdf, p. 8].\n- **Mask R-CNN** (referred to as \"our method\"): Evaluated on the COCO object detection task [Source: mask_rcnn.pdf, p. 2].",
+        "answer": "Based on the provided evidence, the following models were evaluated on the COCO dataset:\n\n- **Faster R-CNN**: Evaluated on the MS COCO object detection dataset [Source: faster_rcnn.pdf, p.10, p.11].\n- **ResNet (using Faster R-CNN with ResNet-101)**: Evaluated on the MS COCO dataset [Source: resnet.pdf, p.10, p.11].\n- **DETR**: Performed experiments on the COCO 2017 detection and panoptic segmentation datasets [Source: detr.pdf, p.8].\n- **PanopticFPN**: Retrained and evaluated on the COCO val dataset [Source: detr.pdf, p.16].\n- **Mask R-CNN**: Evaluated on the COCO object detection task and the COCO keypoint dataset [Source: mask_rcnn.pdf, p.2].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system accurately identifies the models evaluated on COCO, covers the core entities from the reference answer while adding relevant details, and provides correct source citations throughout.",
+          "reason": "The system answer accurately identifies the models evaluated on COCO with correct details, covers all key points from the reference answer plus additional valid ones from the corpus, and provides proper, plausible citations for all claims.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -748,24 +748,24 @@
       "question": "Which papers in this corpus build directly on the Transformer architecture?",
       "expected": "The Vision Transformer (ViT) applies a standard Transformer encoder to image patches; DETR uses a transformer encoder-decoder for detection; and Swin Transformer builds a hierarchical vision transformer with shifted windows. All three derive from Vaswani et al.'s Transformer.",
       "basic_rag": {
-        "answer": "Based on the provided context, the following papers build directly on the Transformer architecture:\n\n* **Vision Transformer (`vision_transformer.pdf`)**: Follows the original Transformer (Vaswani et al., 2017) as closely as possible in its model design, utilizing scalable NLP Transformer architectures and their efficient implementations [Source: vision_transformer.pdf, p. 3].\n* **DETR (`detr.pdf`)**: Differs from the original transformer by decoding $N$ objects in parallel at each decoder layer rather than using an autoregressive model [Source: detr.pdf, p. 7].",
-        "scores": {
-          "correctness": 5,
-          "completeness": 3,
-          "citation_accuracy": 5,
-          "reason": "The system correctly identifies and cites two of the papers from the reference answer with accurate facts, though it misses the Swin Transformer.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, the following papers build directly on or use the Transformer architecture:\n\n* **Vision Transformer (ViT)** (`vision_transformer.pdf`): The paper states that in its model design, it follows the original Transformer (Vaswani et al., 2017) as closely as possible [Source: vision_transformer.pdf, p.3]. Additionally, connecting the sources shows that the pioneering work of ViT directly applies the Transformer architecture to nonoverlapping medium-sized image patches [Source: swin_transformer.pdf, p.3] and receives a 1D sequence of token embeddings as input [Source: vision_transformer.pdf, p.3].\n* **Swin Transformer** (`swin_transformer.pdf`): The paper seeks to expand the applicability of the Transformer to serve as a general-purpose backbone for computer vision [Source: swin_transformer.pdf, p.1], and its architecture incorporates a shifted window approach for computing self-attention [Source: swin_transformer.pdf, p.2]. \n* **DETR** (`detr.pdf`): The paper states that its model is based on the Transformer architecture [Source: detr.pdf, p.20]. \n\n*(Note: The foundational Transformer architecture itself was originally proposed by Vaswani et al. in `attention_is_all_you_need.pdf` [Source: attention_is_all_you_need.pdf, p.1, Source: vision_transformer.pdf, p.3]).*",
+        "answer": "Based on the provided corpus, the following papers build directly on or adapt the Transformer architecture for computer vision:\n\n* **Vision Transformer (`vision_transformer.pdf`)**: Follows the original Transformer model closely, using a standard Transformer encoder to process images as sequences of patches [Source: vision_transformer.pdf, p.3, 12]. \n* **DETR (`detr.pdf`)**: Builds upon the original Transformer by utilizing decoder layers that decode objects in parallel rather than autoregressively [Source: detr.pdf, p.7].\n* **Swin Transformer (`swin_transformer.pdf`)**: Adapts the Transformer architecture to serve as a general-purpose backbone for computer vision [Source: swin_transformer.pdf, p.1]. \n\n*(Note: `attention_is_all_you_need.pdf` introduces the original Transformer architecture itself [Source: attention_is_all_you_need.pdf, p.1, 8].)*",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies all three papers mentioned in the reference, provides correct details about them, and includes precise and verifiable source citations.",
+          "reason": "The system correctly identifies all three papers mentioned in the reference answer, provides accurate details about their use of the Transformer architecture, and includes precise source citations.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, the following papers build directly on or adapt the Transformer architecture:\n\n- **`vision_transformer.pdf`**: The authors state that in their model design, they follow the original Transformer (Vaswani et al., 2017) as closely as possible [Source: vision_transformer.pdf, p.3] [7]. \n- **`swin_transformer.pdf`**: This paper seeks to expand the applicability of the Transformer to serve as a general-purpose backbone for computer vision [Source: swin_transformer.pdf, p.1] [9]. Furthermore, connecting the sources shows that the Swin Transformer architecture utilizes the Transformer [Source: swin_transformer.pdf, p.2] [4], building upon the pioneering work of ViT which directly applies the Transformer architecture to image patches [Source: swin_transformer.pdf, p.3] [1]. \n\n*(Note: `attention_is_all_you_need.pdf` proposes the original Transformer architecture itself [Source: attention_is_all_you_need.pdf, p.1] [6].)*",
+        "scores": {
+          "correctness": 4,
+          "completeness": 4,
+          "citation_accuracy": 5,
+          "reason": "The system correctly identifies ViT and Swin Transformer as building on the Transformer architecture with accurate citations, though it misses DETR which was in the reference answer.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -843,24 +843,24 @@
       "question": "What datasets was the Vision Transformer pre-trained on, and how did dataset scale affect its performance?",
       "expected": "ViT was pre-trained on ImageNet-1k, ImageNet-21k and JFT-300M. It underperforms ResNets when trained on small datasets, because it lacks the inductive biases of convolutions, but overtakes them once pre-trained on large datasets - scale substitutes for inductive bias.",
       "basic_rag": {
-        "answer": "Based on the provided context, the Vision Transformer (ViT) was pre-trained on the following datasets:\n* ImageNet [Source: vision_transformer.pdf, p.6]\n* ImageNet-21k [Source: vision_transformer.pdf, p.6]\n* JFT-300M (an in-house dataset) [Source: vision_transformer.pdf, p.4, p.6]\n\n**Effect of dataset scale on performance:**\n* Large-scale training trumps inductive bias [Source: vision_transformer.pdf, p.4]. \n* When pre-trained on larger datasets (ranging from 14M to 300M images), the model attains excellent results and approaches or beats the state of the art on multiple image recognition benchmarks when transferred to tasks with fewer datapoints [Source: vision_transformer.pdf, p.4]. \n* ViT models pre-trained on the larger JFT-300M dataset outperform ResNet-based baselines across all datasets while requiring substantially less computational resources to pre-train [Source: vision_transformer.pdf, p.6]. Pre-training on the smaller public ImageNet-21k dataset also yields good performance [Source: vision_transformer.pdf, p.6].",
+        "answer": "Based on the provided context, the Vision Transformer (ViT) was pre-trained on the following datasets:\n* ImageNet [Source: vision_transformer.pdf, p.6]\n* ImageNet-21k [Source: vision_transformer.pdf, p.6]\n* JFT-300M (an in-house dataset) [Source: vision_transformer.pdf, p.4, p.6]\n\n**Effect of dataset scale on performance:**\n* When trained on smaller datasets (like ImageNet), ViT achieves lower results (e.g., several percentage points below comparable ResNets) due to fewer inductive biases for vision, though performance on smaller datasets can be boosted by optimizing regularization parameters like weight decay, dropout, and label smoothing [Source: vision_transformer.pdf, p.6, p.7].\n* When pre-trained on larger datasets (ranging from 14M to 300M images, such as ImageNet-21k and JFT-300M), large-scale training overcomes the lack of inductive biases [Source: vision_transformer.pdf, p.2, p.4]. \n* ViT models pre-trained on the large JFT-300M dataset outperform ResNet-based baselines across all datasets while requiring substantially less computational resources to pre-train [Source: vision_transformer.pdf, p.2, p.6]. Pre-training on the smaller public ImageNet-21k dataset also performs well [Source: vision_transformer.pdf, p.6].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies all pre-training datasets, explains the effect of scale, and includes proper and plausible citations for all claims.",
+          "reason": "The system answer accurately identifies all pre-training datasets and thoroughly explains the effect of dataset scale, including the trade-off with inductive bias, while providing consistent and plausible citations.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the Vision Transformer (ViT) was pre-trained on the following datasets:\n- ImageNet [Source: vision_transformer.pdf, p.6]\n- ImageNet-21k [Source: vision_transformer.pdf, p.6]\n- The in-house JFT-300M dataset (or datasets ranging from 14M to 300M images) [Source: vision_transformer.pdf, p.2, p.6]\n\nRegarding how dataset scale affected its performance:\n- Large-scale training trumps inductive bias, allowing ViT to attain excellent results when pre-trained at a sufficient scale [Source: vision_transformer.pdf, p.2]. \n- ViT models perform well when pre-trained on larger datasets like JFT-300M, outperforming ResNet-based baselines while taking substantially less computational resources to pre-train [Source: vision_transformer.pdf, p.3, p.6]. \n- As datasets grow, larger model variants overtake smaller ones [Source: vision_transformer.pdf, p.7].",
+        "answer": "Based on the provided evidence, the Vision Transformer (ViT) was pre-trained on datasets of increasing size, specifically **ImageNet**, **ImageNet-21k**, and the in-house **JFT-300M** dataset (ranging from 14M to 300M images) [Source: vision_transformer.pdf, p.2, p.6]. \n\nDataset scale affects its performance in the following ways:\n- **Large-scale training trumps inductive bias:** When pre-trained on sufficiently large datasets (14M–300M images), ViT approaches or beats the state of the art on multiple benchmarks, whereas it performs less well when pre-trained on smaller datasets like ImageNet without heavy regularization [Source: vision_transformer.pdf, p.2, p.6].\n- **Model variant scaling:** Larger model variants overtake smaller ones as the dataset grows in size [Source: vision_transformer.pdf, p.7]. \n- **Higher benchmark performance:** Models pre-trained on larger datasets (such as JFT-300M) outperform those pre-trained on smaller public datasets (like ImageNet-21k) and surpass ResNet-based baselines while taking less computational resources to pre-train [Source: vision_transformer.pdf, p.3, p.6].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies all pre-training datasets and correctly explains the impact of dataset scale on performance, supported by consistent and plausible citations.",
+          "reason": "The system answer accurately and completely covers all pre-training datasets and the impact of dataset scale mentioned in the reference, while providing appropriate inline citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -950,24 +950,24 @@
       "question": "How does Swin Transformer differ from the Vision Transformer?",
       "expected": "Swin builds hierarchical feature maps and computes self-attention within local shifted windows, giving linear complexity in image size, whereas ViT uses a single-scale global self-attention with quadratic complexity. This makes Swin usable as a general-purpose backbone for detection and segmentation, not just classification.",
       "basic_rag": {
-        "answer": "Based on the provided context, the text does not contain information comparing the Swin Transformer directly to the \"Vision Transformer\" (ViT). Therefore, there is not enough information to answer how Swin Transformer differs from it. What is missing is a comparison or description of the Vision Transformer architecture within the provided text.",
+        "answer": "Based on the provided context, there is no direct comparison or information explaining how the Swin Transformer differs from the standard Vision Transformer (ViT). The context only mentions that Swin Transformer differs from \"previous Transformer based architectures [20] which produce feature maps of a single resolution and have quadratic complexity\" [Source: swin_transformer.pdf, p. 2]. \n\nTherefore, the CONTEXT does not contain enough information to answer how Swin Transformer differs specifically from the Vision Transformer.",
         "scores": {
           "correctness": 2,
           "completeness": 1,
-          "citation_accuracy": 1,
-          "reason": "The system answer states it lacks context to answer, which makes it honest but unhelpful since it completely misses the reference answer.",
+          "citation_accuracy": 3,
+          "reason": "The system correctly identified that the provided context lacked the information to answer the question, but failed to provide the actual answer found in the reference text.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the corpus does not explicitly contrast Swin Transformer with the specific architecture known as \"Vision Transformer.\" However, it states that Swin Transformer differs from previous Transformer-based architectures by producing feature maps at various scales (having a hierarchical architecture) with linear computational complexity with respect to image size, whereas previous Transformer-based architectures produce feature maps of a single resolution and have quadratic complexity [Source: swin_transformer.pdf, p. 1, p. 2, p. 8].",
+        "answer": "Based on the provided evidence, the corpus does not explicitly contrast Swin Transformer with the specific model named \"Vision Transformer.\" However, it states that Swin Transformer differs from **previous Transformer-based architectures** in the following ways:\n\n* Previous Transformer-based architectures produce feature maps of a single resolution and have quadratic complexity [Source: swin_transformer.pdf, p.2].\n* In contrast, Swin Transformer features a hierarchical architecture [Source: swin_transformer.pdf, p.1, p.8] with shifted windows [Source: swin_transformer.pdf, p.1, p.8] that limits self-attention computation to non-overlapping local windows [Source: swin_transformer.pdf, p.8], resulting in linear computational complexity with respect to image size [Source: swin_transformer.pdf, p.1, p.2, p.8].",
         "scores": {
-          "correctness": 4,
-          "completeness": 3,
+          "correctness": 5,
+          "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer correctly identifies the core architectural differences (hierarchical feature maps and linear complexity) mentioned in the reference, but declines to explicitly name ViT due to the retrieval context, scoring slightly lower on completeness regarding downstream tasks.",
+          "reason": "The system answer accurately identifies the core differences (hierarchical feature maps, local shifted windows, linear vs. quadratic complexity) matching the reference answer, provides correct citations, and correctly notes that the corpus discusses previous Transformer architectures generally.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1031,24 +1031,24 @@
       "question": "What is RoIAlign and which problem with RoIPool does it fix?",
       "expected": "RoIAlign removes the harsh quantisation of RoIPool, which rounds RoI boundaries and bins to the feature-map grid and causes misalignment between the RoI and the extracted features. RoIAlign uses bilinear interpolation at sampled points instead, which matters greatly for pixel-accurate masks.",
       "basic_rag": {
-        "answer": "Based on the provided context, RoIAlign is a layer developed to extract a small feature map from each RoI while faithfully preserving explicit per-pixel spatial correspondence [Source: mask_rcnn.pdf, p.3]. \n\nRoIPool suffers from a quantization problem because it first quantizes a floating-number RoI to the discrete granularity of the feature map, and then subdivides this quantized RoI into spatial bins which are also quantized [Source: mask_rcnn.pdf, p.3]. This causes misalignments with the input [Source: mask_rcnn.pdf, p.6]. RoIAlign fixes this by performing no quantization, ensuring proper alignment which is key to large improvements in mask prediction [Source: mask_rcnn.pdf, p.4, p.6].",
+        "answer": "RoIAlign is a quantization-free layer that faithfully preserves exact spatial locations by avoiding any quantization of the RoI boundaries, bins, or sampling points [Source: mask_rcnn.pdf, p. 3, 9, 11]. It computes the exact values of input features using bilinear interpolation at regularly sampled locations in each RoI bin [Source: mask_rcnn.pdf, p. 3]. \n\nIt fixes the problem of coarse spatial quantization and misalignments caused by RoIPool, which quantizes a floating-number RoI and its spatial bins to the discrete granularity of the feature map [Source: mask_rcnn.pdf, p. 3, 5, 11].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately explains RoIAlign and its fix for RoIPool's quantization problem, covers all key points from the reference answer, and includes consistent and plausible citations.",
+          "reason": "The system answer is factually correct, covers all key points from the reference answer regarding quantization and bilinear interpolation, and includes proper source citations.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, **RoIAlign** is a simple, quantization-free layer [Source: mask_rcnn.pdf, p.1] (or algorithm [Source: mask_rcnn.pdf, p.4]) that avoids any quantization of RoI boundaries or bins [Source: mask_rcnn.pdf, p.3] and uses bilinear sampling [Source: mask_rcnn.pdf, p.6]. \n\nRoIAlign fixes the problem of **misalignment** caused by RoIPool [Source: mask_rcnn.pdf, p.3]. Specifically, RoIPool quantizes a floating-number RoI to the discrete granularity of a feature map and subdivides it into spatial bins that are themselves quantized, which introduces misalignments between the RoI and the extracted features [Source: mask_rcnn.pdf, p.3]. RoIAlign removes this harsh quantization, properly aligning the extracted features with the input and faithfully preserving exact spatial locations and per-pixel spatial correspondence [Source: mask_rcnn.pdf, p.1, 3].",
+        "answer": "Based on the provided evidence, RoIAlign is a simple, quantization-free layer (or algorithm) that faithfully preserves exact spatial locations [Source: mask_rcnn.pdf, p.1, p.3, p.4]. \n\nRegarding the problems with RoIPool that it fixes:\n- RoIPool uses harsh quantization by first quantizing a floating-number RoI to the discrete granularity of the feature map and then subdividing it into spatial bins that are also quantized [Source: mask_rcnn.pdf, p.3]. \n- This quantization introduces misalignments between the RoI and the extracted features, which negatively affects pixel-accurate mask and keypoint predictions [Source: mask_rcnn.pdf, p.3, p.8]. \n- RoIAlign fixes this by removing the harsh quantization of RoI boundaries and bins (avoiding operations like $[x/16]$), thereby properly aligning the extracted features with the input [Source: mask_rcnn.pdf, p.3].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately and completely explains RoIAlign and how it fixes RoIPool's quantization and misalignment issues, while consistently using the required citation format.",
+          "reason": "The system answer accurately explains RoIAlign and its fix for RoIPool, covers all key points from the reference, and includes proper citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1113,24 +1113,24 @@
       "question": "Which backbone networks are used by the detection models in this corpus?",
       "expected": "ResNet (and ResNeXt) backbones, often with a Feature Pyramid Network, are used by Mask R-CNN and DETR; Faster R-CNN uses ZF and VGG-16 in the original paper; YOLOv3 uses Darknet-53. Swin Transformer is itself proposed as a backbone.",
       "basic_rag": {
-        "answer": "Based on the provided context, the backbone networks used by the detection models are:\n\n* **ResNet-101** used in Faster R-CNN [Source: resnet.pdf, p.11]\n* **ResNet-50** (specifically in a backbone configuration called C4) used in Mask R-CNN [Source: mask_rcnn.pdf, p.4]\n* **Feature Pyramid Network (FPN)** explored as a backbone for Faster R-CNN [Source: mask_rcnn.pdf, p.4]\n* **ZF model** used in Fast R-CNN / RPN [Source: faster_rcnn.pdf, p.10]\n* **GoogLeNet** (referenced for comparison on the ImageNet detection dataset) [Source: resnet.pdf, p.11]",
+        "answer": "Based on the corpus, the detection models use the following backbone networks:\n\n* **ResNet-101**: Used in Faster R-CNN detection systems [Source: resnet.pdf, p.8, p.11].\n* **ResNet-50**: Specifically used in a backbone denoted as ResNet-50-C4 [Source: mask_rcnn.pdf, p.4].\n* **Feature Pyramid Network (FPN)**: Used as a backbone that builds an in-network feature pyramid from a single-scale input [Source: mask_rcnn.pdf, p.4].\n* **ZF (Zeiler and Fergus model)**: Used in Faster R-CNN / Fast R-CNN models [Source: faster_rcnn.pdf, p.3, p.10].\n* **VGG-16 (Simonyan and Zisserman model)**: Used in Faster R-CNN models [Source: faster_rcnn.pdf, p.3, resnet.pdf, p.8].",
         "scores": {
-          "correctness": 4,
+          "correctness": 5,
           "completeness": 3,
           "citation_accuracy": 5,
-          "reason": "The system provides correct and well-cited facts based on its context, but misses several backbone networks mentioned in the reference answer such as Darknet-53, Swin Transformer, and VGG-16.",
+          "reason": "The system provides correct and well-cited facts based on its corpus, though it misses some models mentioned in the reference answer like YOLOv3, DETR, and Swin Transformer.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the corpus mentions the following backbone networks used by detection models:\n\n- **Zeiler and Fergus model (ZF)** and **VGG-16 (Simonyan and Zisserman model)** are investigated as shareable convolutional layers for Faster R-CNN and Fast R-CNN [Source: faster_rcnn.pdf, p.3]. \n- **ResNet-101** is used in Faster R-CNN as a replacement for VGG-16 [Source: resnet.pdf, p.8, p.11].\n- **ResNet-50** (specifically denoted as ResNet-50-C4) and **Feature Pyramid Networks (FPN)** are used as backbones (such as in Mask R-CNN and Faster R-CNN) [Source: mask_rcnn.pdf, p.4].",
+        "answer": "Based on the provided evidence, the detection models in the corpus use the following backbone networks:\n\n- **Faster R-CNN** investigates the Zeiler and Fergus model (ZF) and the Simonyan and Zisserman model (VGG-16) [Source: faster_rcnn.pdf, p.3]. It also replaces VGG-16 with **ResNet-101** [Source: resnet.pdf, p.8] and uses ResNet-101 in its detection system [Source: resnet.pdf, p.11].\n- **Mask R-CNN** uses backbones such as **ResNet-50** (referred to as ResNet-50-C4) and **Feature Pyramid Networks (FPN)** [Source: mask_rcnn.pdf, p.4].",
         "scores": {
           "correctness": 5,
-          "completeness": 4,
+          "completeness": 3,
           "citation_accuracy": 5,
-          "reason": "The system answer provides accurate facts with strong citations, covering most of the key backbone networks mentioned in the reference answer except for YOLOv3 and Swin Transformer.",
+          "reason": "The system answer provides factually correct information with precise citations, though it misses some models mentioned in the reference answer such as YOLOv3 and DETR.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1227,24 +1227,24 @@
       "question": "Which models does DETR compare itself against, and how does it perform?",
       "expected": "DETR compares against Faster R-CNN baselines on COCO and demonstrates comparable or better accuracy - notably better on large objects, attributed to the transformer's global reasoning, but worse on small objects.",
       "basic_rag": {
-        "answer": "Based on the provided context, DETR compares itself against **Faster R-CNN**:\n\n* **Parameter and FLOP Comparison:** A DETR model with 6 transformer and 6 decoder layers (width 256, 8 attention heads) has 41.3M parameters (23.5M in ResNet-50, 17.8M in the transformer), which is comparable in the number of parameters to Faster R-CNN with FPN [Source: detr.pdf, p.10]. Faster R-CNN and DETR with a ResNet-101 backbone also show comparable results [Source: detr.pdf, p.10].\n* **Performance:** DETR is competitive with Faster R-CNN, achieving 42 AP on the COCO val subset [Source: detr.pdf, p.10]. DETR achieves this by improving APL (+7.8), though it lags behind in APS (-5.5) [Source: detr.pdf, p.10]. DETR-DC5 has a higher AP (with the same number of parameters and similar FLOP count), but is still significantly behind in APS [Source: detr.pdf, p.10].",
+        "answer": "Based on the provided context, DETR compares itself against **Faster R-CNN** (including versions with FPN and with a ResNet-101 backbone) [Source: detr.pdf, p.10, Source: detr.pdf, p.2]. \n\nIts performance compares as follows:\n* DETR is competitive with Faster R-CNN when using the same number of parameters (41.3M), achieving 42 AP on the COCO val subset [Source: detr.pdf, p.10, Source: detr.pdf, p.2].\n* DETR achieves this performance by improving large object detection ($\\text{AP}_L$ by +7.8), though it lags behind in small object detection ($\\text{AP}_S$ by -5.5) [Source: detr.pdf, p.2].\n* The DETR-DC5 model achieves a higher AP with the same parameter count and similar FLOP count, but remains significantly behind in $\\text{AP}_S$ [Source: detr.pdf, p.2].\n* DETR and Faster R-CNN show comparable results when using a ResNet-101 backbone [Source: detr.pdf, p.2].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies the compared models, details the performance including large and small objects, and provides proper citations for all claims.",
+          "reason": "The system answer accurately identifies the comparison models and performance details, fully covers the reference points with precise metrics, and includes consistent and plausible citations.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, DETR compares itself against the following models and baselines:\n\n* **Faster R-CNN (including heavily tuned baselines, Faster R-CNN with FPN, and Faster R-CNN with a ResNet-101 backbone) [Source: detr.pdf, p.8, p.9, p.10]:** DETR achieves competitive and comparable results to Faster R-CNN baselines on COCO evaluation [Source: detr.pdf, p.8, p.9]. With the same number of parameters, DETR achieves 42 AP on the COCO val subset [Source: detr.pdf, p.10]. Specifically, DETR has a lower small object average precision (APS, lagging by -5.5), but greatly improved large object average precision (APL, improving by +7.8) [Source: detr.pdf, p.9, p.10]. DETR and Faster R-CNN with a ResNet-101 backbone also show comparable results [Source: detr.pdf, p.10]. Additionally, for the \"things\" class, despite a deficit of up to 8 mAP compared to baselines on mask AP computation, DETR obtains competitive PQth [Source: detr.pdf, p.16].\n* **PanopticFPN (with ResNet 101) [Source: detr.pdf, p.24]:** In panoptic segmentation comparisons, PanopticFPN misses one plane entirely while DETR fails to accurately segment three of them, and DETR predicts \"things\" masks at full resolution allowing sharper boundaries than PanopticFPN [Source: detr.pdf, p.24].",
+        "answer": "Based on the provided evidence, DETR compares itself against the following models and baselines:\n\n* **Faster R-CNN (including heavily tuned baselines, Faster R-CNN with FPN, and Faster R-CNN with ResNet-101):** DETR achieves comparable and competitive results to these baselines in quantitative evaluations on COCO [Source: detr.pdf, p.8, p.9, p.3]. Specifically, a DETR model with the same number of parameters (41.3M) as Faster R-CNN with Fans achieves 42 AP on the COCO val subset [Source: detr.pdf, p.10]. DETR achieves this by significantly improving performance on large objects (APL +7.8), though it still lags behind in performance on small objects (APS -5.5) [Source: detr.pdf, p.3]. Furthermore, connecting the graph evidence shows that DETR models achieve comparable results to heavily tuned Faster R-CNN baselines, having lower APS but greatly improved APL [Source: detr.pdf, p.9].\n* **PanopticFPN (with ResNet 101):** In comparisons of panoptic predictions, PanopticFPN misses one plane entirely in a failure case with overlapping objects, while DETR fails to accurately segment 3 of them [Source: detr.pdf, p.24]. For the \"things\" class, despite a deficit of up to 8 mAP compared to baselines on mask AP computation, the graph evidence shows that DETR obtains competitive PQth [Source: detr.pdf, p.16].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies the comparison models and performance details from the reference, covers all key points including small and large object performance, and provides consistent and plausible citations.",
+          "reason": "The system answer accurately captures all details from the reference answer with correct facts, complete coverage, and proper citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1328,24 +1328,24 @@
       "question": "Which models outperform or improve on Faster R-CNN, and who proposed those models?",
       "expected": "Mask R-CNN extends and outperforms Faster R-CNN and was proposed by He, Gkioxari, Dollar and Girshick. DETR matches or beats Faster R-CNN baselines and was proposed by Carion et al. Faster R-CNN itself was proposed by Ren, He, Girshick and Sun.",
       "basic_rag": {
-        "answer": "Based on the provided context:\n\n* **YOLOv3** is described as being on par with SSD variants and 3x faster, while noting that Faster R-CNN methods are still ahead of it in terms of AP [Source: yolov3.pdf, p. 3]. The context does not explicitly name the authors or who proposed YOLOv3.\n* **DETR** models achieve comparable results to heavily tuned Faster R-CNN baselines, with lower APS but greatly improved APL [Source: detr.pdf, p. 9]. The context does not name who proposed DETR. \n\nThe context does not contain information about models that strictly \"outperform or improve on\" Faster R-CNN, other than noting DETR's comparable results and improved APL, and YOLOv3's speed comparisons. Therefore, the specific creators/proposers of these models are missing from the context.",
+        "answer": "Based on the provided context:\n\n* **Mask R-CNN** (specifically using ResNet-101-FPN) outperforms the base variants of all previous state-of-the-art models [Source: mask_rcnn.pdf, p.7]. The context does not state who proposed Mask R-CNN.\n* **He et al.** obtained single-model and ensemble improvements orthogonal to Faster R-CNN [Source: faster_rcnn.pdf, p.11]. \n* **DETR** models achieve results comparable to heavily tuned Faster R-CNN baselines [Source: detr.pdf, p.9]. The context does not state who proposed DETR. \n\nThe context lacks information on the specific creators/authors of Mask R-CNN and DETR.",
         "scores": {
           "correctness": 3,
-          "completeness": 2,
+          "completeness": 3,
           "citation_accuracy": 5,
-          "reason": "The system correctly identified limitations in its context and refrained from hallucinating, but missed key models and proposers mentioned in the reference answer.",
+          "reason": "The system correctly identifies models that improve upon Faster R-CNN based on its context, but misses the authors of Mask R-CNN and DETR due to retrieval limitations, while providing good inline citations.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the corpus does not state which models outperform or improve on Faster R-CNN, nor does it name the authors who proposed such models (the evidence only notes that DETR achieves \"comparable results\" and is \"competitive with\" Faster R-CNN [Source: detr.pdf, p.9, 10], and that Mask R-CNN outperforms existing single-model entries [Source: mask_rcnn.pdf, p.1] without explicitly mentioning Faster R-CNN in that comparison). \n\nWhat is missing: Evidence explicitly linking a model that outperforms Faster R-CNN along with the authors who proposed it.",
+        "answer": "Based on the provided evidence, the corpus does not state which models outperform or improve upon Faster R-CNN. The evidence only reports that DETR achieves \"comparable results\" and can be \"competitive\" with Faster R-CNN baselines [Source: detr.pdf, p.9, p.10], but it does not state that DETR (or any other model) outperforms it.",
         "scores": {
           "correctness": 2,
           "completeness": 1,
           "citation_accuracy": 5,
-          "reason": "The system honestly states it cannot answer from the provided context, which scores a 2 for correctness, but it misses all the facts from the reference answer resulting in low completeness while correctly formatting its internal citations.",
+          "reason": "The system honestly reports it cannot answer from the context, which is safe and avoids hallucination but misses all facts from the reference answer.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1436,24 +1436,24 @@
       "question": "Which authors of object detection papers in this corpus also contributed to segmentation research?",
       "expected": "Kaiming He and Ross Girshick appear on both Faster R-CNN (detection) and Mask R-CNN (instance segmentation). Kaiming He is also an author of ResNet. Shaoqing Ren and Jian Sun co-authored Faster R-CNN and ResNet.",
       "basic_rag": {
-        "answer": "Based on the provided context, there is no mention of the specific authors of the object detection or segmentation papers (only citations by reference numbers such as Li et al. [26]). Therefore, the context does not contain enough information to answer which specific authors contributed to both research areas. What is missing is the author names corresponding to the cited papers in the corpus. [Source: mask_rcnn.pdf, p. 2, Source: faster_rcnn.pdf, p. 2]",
-        "scores": {
-          "correctness": 2,
-          "completeness": 1,
-          "citation_accuracy": 5,
-          "reason": "The system correctly identified that the provided context lacked the necessary author names to answer the question, making it honest but unhelpful regarding the reference answer.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, the corpus explicitly names **Li et al.** as having combined an object detection system and a segment proposal system for fully convolutional instance segmentation (FCIS) [Source: mask_rcnn.pdf, p.2]. \n\nThe evidence does not name specific authors for the other object detection or segmentation frameworks mentioned (such as Fast/Faster R-CNN, FCN, or DETR). Therefore, the corpus does not provide a complete list of all authors who contributed to both fields.",
+        "answer": "Based on the provided context, the only authors specifically named are **Li et al.**, who combined a segment proposal system and an object detection system for fully convolutional instance segmentation (FCIS) [Source: mask_rcnn.pdf, p.2]. \n\nThe context does not contain enough information to name other specific authors, as it generally refers to papers by citation numbers (e.g., [8], [11], [26]) rather than author names.",
         "scores": {
           "correctness": 2,
           "completeness": 1,
           "citation_accuracy": 3,
-          "reason": "The system answer states it cannot answer fully from the context due to missing information, but misses all the key authors provided in the reference answer.",
+          "reason": "The system answer fails to provide the correct authors due to limited context, scoring low on correctness and completeness while including a valid source citation format.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, Li et al. are mentioned as having combined a segment proposal system and an object detection system for \"fully convolutional instance segmentation\" (FCIS) [Source: mask_rcnn.pdf, p.2]. \n\nThe corpus does not provide the names of other specific authors who contributed to both object detection and segmentation research.",
+        "scores": {
+          "correctness": 2,
+          "completeness": 1,
+          "citation_accuracy": 3,
+          "reason": "The system answer fails to identify the correct authors from the reference, honestly stating the corpus does not provide them, and includes a citation.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1530,24 +1530,24 @@
       "question": "Trace the architectural lineage from the original Transformer to Swin Transformer.",
       "expected": "Vaswani et al. proposed the Transformer for machine translation using self-attention. Dosovitskiy et al. adapted it to vision as ViT by treating image patches as tokens. Liu et al. then proposed Swin Transformer, which addresses ViT's quadratic cost and lack of multi-scale features using hierarchical shifted-window attention, making it a general backbone.",
       "basic_rag": {
-        "answer": "Based on the provided context, the Swin Transformer is adapted from the standard Transformer [Source: swin_transformer.pdf, p. 5]. The context does not contain further information detailing the complete architectural lineage from the original Transformer to the Swin Transformer.",
+        "answer": "Based on the provided context, the Swin Transformer is adapted from the standard Transformer [Source: swin_transformer.pdf, p.5]. Its architectural modifications include:\n\n* Replacing the standard multi-head self-attention (MSA) module in a Transformer block with a shifted window-based module [Source: swin_transformer.pdf, p.10].\n* Constructing hierarchical feature maps by starting from small-sized patches and gradually merging neighboring patches in deeper layers [Source: swin_transformer.pdf, p.2, 11].",
         "scores": {
-          "correctness": 2,
-          "completeness": 1,
-          "citation_accuracy": 3,
-          "reason": "The system correctly identified that the context lacked the full lineage, but failed to provide the required architectural trace, scoring low on completeness.",
+          "correctness": 5,
+          "completeness": 4,
+          "citation_accuracy": 5,
+          "reason": "The system answer correctly identifies the architectural lineage and key modifications of the Swin Transformer with accurate citations, though it slightly omits the intermediate ViT step explicitly mentioned in the reference.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, the Swin Transformer is directly adapted from the standard Transformer [Source: swin_transformer.pdf, p.6]. \n\nConnecting these sources indicates the lineage as follows:\n- The Swin Transformer is an instance of a Transformer [Source: swin_transformer.pdf, p.2] and is specifically adapted from the standard Transformer [Source: swin_transformer.pdf, p.6]. \n- Furthermore, connecting the graph evidence shows that the Swin Transformer is based on the Transformer [Source: swin_transformer.pdf, p.6].\n\nThe corpus does not provide further intermediate architectural steps between the original Transformer and the Swin Transformer.",
+        "answer": "Based on the provided evidence, the architectural lineage can be traced as follows:\n\n* The text states that the proposed Swin Transformer is adapted from the standard Transformer [Source: swin_transformer.pdf, p.6]. \n* Connecting these sources further indicates that the Swin Transformer is based on the Transformer [Source: swin_transformer.pdf, p.6]. \n* Within computer vision, it is presented as a new vision Transformer [Source: swin_transformer.pdf, p.1] and a general-purpose backbone [Source: swin_transformer.pdf, p.2] that constructs hierarchical representations [Source: swin_transformer.pdf, p.2] using shifted windows [Source: swin_transformer.pdf, p.2].",
         "scores": {
-          "correctness": 3,
-          "completeness": 2,
+          "correctness": 4,
+          "completeness": 3,
           "citation_accuracy": 5,
-          "reason": "The system correctly identifies the connection to the standard Transformer but misses the crucial intermediate step of ViT and the specific architectural innovations like shifted windows, while properly providing citations.",
+          "reason": "The system correctly identifies the lineage and key features of the Swin Transformer with good citations, though it misses the intermediate ViT step mentioned in the reference answer.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1612,24 +1612,24 @@
       "question": "Which model that uses a ResNet backbone is outperformed by a transformer-based model, and on what benchmark?",
       "expected": "Faster R-CNN and Mask R-CNN use ResNet backbones and are outperformed on COCO by transformer-based approaches - DETR matches/exceeds Faster R-CNN baselines, and Swin Transformer as a backbone substantially exceeds ResNet-based detectors on COCO box and mask AP.",
       "basic_rag": {
-        "answer": "Based on the provided context, the transformer-based model (Swin Transformer) outperforms DeiT architectures [Source: swin_transformer.pdf, p.6], but the context does *not* contain information about a specific model using a ResNet backbone that is outperformed by a transformer-based model. Therefore, the context does not contain enough information to answer the question.",
+        "answer": "Based on the provided context, large Vision Transformer (ViT) models outperform BiT ResNets when pre-trained on larger datasets on the **ImageNet** benchmark (Transfer to ImageNet) [Source: vision_transformer.pdf, p. 8].",
         "scores": {
-          "correctness": 2,
+          "correctness": 1,
           "completeness": 1,
-          "citation_accuracy": 3,
-          "reason": "The system correctly stated it could not answer based on the provided context, but failed to retrieve the correct information present in the reference answer.",
+          "citation_accuracy": 5,
+          "reason": "The system answer discusses ViT and BiT ResNets on ImageNet, which completely misses the reference answer's focus on Faster R-CNN/Mask R-CNN and the COCO benchmark.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "The provided evidence does not name a specific model using a ResNet backbone that is outperformed by a transformer-based model. It only states generally that Vision Transformers generally outperform ResNets with the same computational budget [Source: vision_transformer.pdf, p.7], and notes that while large Vision Transformer (ViT) models perform worse than BiT ResNets when pre-trained on small datasets, they shine when pre-trained on larger datasets on the ImageNet benchmark [Source: vision_transformer.pdf, p.6]. Specific individual ResNet-backed models being outperformed are not identified in the text.",
+        "answer": "The provided evidence does not name a specific model using a ResNet backbone that is outperformed by a transformer-based model, nor does it specify a benchmark for such a comparison. It only states generally that Vision Transformers generally outperform ResNets with the same computational budget [Source: vision_transformer.pdf, p.7]. Specific model-to-model comparisons against ResNets are missing from the evidence.",
         "scores": {
           "correctness": 2,
           "completeness": 1,
           "citation_accuracy": 5,
-          "reason": "The system correctly identified that the provided context lacked the specific information to answer the question, but as a result missed all key points of the reference answer.",
+          "reason": "The system honestly stated it could not answer based on the provided evidence, but failed to retrieve the correct information present in the reference answer.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1713,24 +1713,24 @@
       "question": "Kaiming He co-authored which papers in this corpus, and what is the connection between them?",
       "expected": "Kaiming He co-authored ResNet, Faster R-CNN and Mask R-CNN. The connection is a chain: ResNet provides the backbone architecture used by Faster R-CNN, which Mask R-CNN then extends with a mask branch for instance segmentation. The same author line runs from classification through detection to segmentation.",
       "basic_rag": {
-        "answer": "Based on the provided CONTEXT, there is no mention of Kaiming He or any papers co-authored by him. Therefore, the context does not contain enough information to answer the question. What is missing is any reference to Kaiming He and his co-authored papers within the corpus.",
+        "answer": "The provided CONTEXT does not contain any information about Kaiming He or which papers he co-authored. Therefore, it is missing the information needed to answer the question.",
         "scores": {
           "correctness": 2,
           "completeness": 1,
           "citation_accuracy": 1,
-          "reason": "The system correctly identified that the context lacked the information to answer, but failed to provide any of the facts from the reference answer.",
+          "reason": "The system correctly identified that the context lacked the information, making it honest but unhelpful regarding the specific question.",
           "parse_failed": false
         },
-        "n_chunks": 5,
+        "n_chunks": 12,
         "error": ""
       },
       "kg_rag": {
-        "answer": "Based on the provided evidence, Kaiming He co-authored the following papers in the corpus:\n- *Deep Residual Learning for Image Recognition* [Source: resnet.pdf, p.1]\n- *Faster R-CNN: Towards Real-Time Object* [Source: faster_rcnn.pdf, p.1]\n- *Mask R-CNN* [Source: mask_rcnn.pdf, p.1]\n\nRegarding the connection between them, the evidence only establishes that they share the same author (Kaiming He). The provided evidence does not contain any further information or graph connections linking these specific papers to one another.",
+        "answer": "Based on the provided evidence, Kaiming He co-authored the following papers in this corpus:\n- *Deep Residual Learning for Image Recognition* [Source: resnet.pdf, p.1]\n- *Faster R-CNN: Towards Real-Time Object* [Source: faster_rcnn.pdf, p.1]\n- *Mask R-CNN* [Source: mask_rcnn.pdf, p.1]\n\nThe provided evidence does not contain information about any further connections between these specific papers beyond their shared author.",
         "scores": {
-          "correctness": 3,
+          "correctness": 4,
           "completeness": 3,
           "citation_accuracy": 5,
-          "reason": "The system correctly identifies the papers and cites them well, but fails to explain the architectural connection between them due to limited retrieved evidence.",
+          "reason": "The system correctly identifies the papers and provides proper citations, but fails to explain the architectural connection between them as described in the reference answer.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1827,24 +1827,24 @@
       "question": "Among the models evaluated on COCO, which are transformer-based, and which convolutional model did each of them compare against?",
       "expected": "DETR is transformer-based and compares against Faster R-CNN on COCO. Swin Transformer is transformer-based and compares against ResNet/ResNeXt-based detectors on COCO. Both use a convolutional detector family as the baseline they aim to surpass.",
       "basic_rag": {
-        "answer": "Based on the provided context, the transformer-based models evaluated on COCO are **Swin-B** and **Swin-L** [Source: swin_transformer.pdf, p.7]. \n\nHowever, the context does not contain enough information to fully specify which convolutional model each of them compared against. It lists X101-64 (HTC++) alongside them in a results table and mentions \"vNets, i.e. ResNe(X)t,\" but the explanation of the comparisons cuts off (\"The comparisons are conducted by changing...\") [Source: swin_transformer.pdf, p.7]. Therefore, the exact pairings cannot be determined from the text alone.",
-        "scores": {
-          "correctness": 2,
-          "completeness": 1,
-          "citation_accuracy": 5,
-          "reason": "The system honestly reports that the context is insufficient to fully answer the question, resulting in low completeness and correctness regarding the missing facts, but proper citations are provided.",
-          "parse_failed": false
-        },
-        "n_chunks": 5,
-        "error": ""
-      },
-      "kg_rag": {
-        "answer": "Based on the provided evidence, the transformer-based models evaluated on COCO and their comparisons are as follows:\n\n* **DETR** is evaluated on the COCO validation set and is compared against **Faster R-CNN** (using ResNet-50 and ResNet-101 backbones) [Source: detr.pdf, p.8].\n* **Swin Transformer** (including Swin-B and Swin-L variants) is evaluated on COCO object detection and instance segmentation [Source: swin_transformer.pdf, p.1, p.7]. The evidence reports that it is compared against standard convolutions and vNets, specifically **ResNe(X)t** [Source: swin_transformer.pdf, p.4, p.6].",
+        "answer": "Based on the provided context, the transformer-based models evaluated on COCO and the convolutional models they compare against are:\n\n* **Swin Transformer** compares against vNets (specifically ResNe(X)t) [Source: swin_transformer.pdf, p.7].\n* **DETR** compares against Faster R-CNN using ResNet-50 and ResNet-101 backbones [Source: detr.pdf, p.8].",
         "scores": {
           "correctness": 5,
           "completeness": 5,
           "citation_accuracy": 5,
-          "reason": "The system answer accurately identifies the transformer-based models and their convolutional baselines on COCO, covers all key points of the reference, and provides proper citations.",
+          "reason": "The system accurately identifies both transformer models, their convolutional comparisons, and provides correct source citations matching the reference answer.",
+          "parse_failed": false
+        },
+        "n_chunks": 12,
+        "error": ""
+      },
+      "kg_rag": {
+        "answer": "Based on the provided evidence, the transformer-based models evaluated on COCO and their comparisons are:\n\n1. **DETR**: DETR is evaluated on the COCO validation set [Source: detr.pdf, p.8]. It is compared against Faster R-CNN models utilizing ResNet-50 and ResNet-101 backbones [Source: detr.pdf, p.8].\n2. **Swin Transformer**: Swin Transformer is evaluated on COCO object detection and instance segmentation [Source: swin_transformer.pdf, p.1, p.7]. The paper reports comparisons against standard convolutions/frameworks [Source: swin_transformer.pdf, p.6] and previous networks such as vNets (i.e., ResNe(X)t) [Source: swin_transformer.pdf, p.4], including models like X101-64 (HTC++) [Source: swin_transformer.pdf, p.4, p.7].",
+        "scores": {
+          "correctness": 5,
+          "completeness": 5,
+          "citation_accuracy": 5,
+          "reason": "The system answer accurately identifies the transformer-based models and their convolutional baselines on COCO, covers all key points from the reference, and provides appropriate citations.",
           "parse_failed": false
         },
         "n_vector": 10,
@@ -1933,31 +1933,31 @@
     "simple": {
       "n": 7,
       "basic_rag": {
-        "correctness": 4.29,
-        "completeness": 3.57,
-        "citation_accuracy": 5,
-        "overall": 4.29,
+        "correctness": 4.57,
+        "completeness": 4.14,
+        "citation_accuracy": 4.71,
+        "overall": 4.47,
         "scored": 7,
         "failed": 0
       },
       "kg_rag": {
         "correctness": 5,
-        "completeness": 4.86,
+        "completeness": 4.57,
         "citation_accuracy": 5,
-        "overall": 4.95,
+        "overall": 4.86,
         "scored": 7,
         "failed": 0
       },
-      "delta_overall": 0.66,
+      "delta_overall": 0.39,
       "graph_share": 0.26
     },
     "medium": {
       "n": 7,
       "basic_rag": {
         "correctness": 4.29,
-        "completeness": 3.57,
-        "citation_accuracy": 4.43,
-        "overall": 4.1,
+        "completeness": 3.86,
+        "citation_accuracy": 4.71,
+        "overall": 4.29,
         "scored": 7,
         "failed": 0
       },
@@ -1969,58 +1969,58 @@
         "scored": 7,
         "failed": 0
       },
-      "delta_overall": 0.71,
+      "delta_overall": 0.52,
       "graph_share": 0.33
     },
     "hard": {
       "n": 6,
       "basic_rag": {
-        "correctness": 2.17,
-        "completeness": 1.17,
-        "citation_accuracy": 3.67,
-        "overall": 2.34,
+        "correctness": 3,
+        "completeness": 2.5,
+        "citation_accuracy": 4,
+        "overall": 3.17,
         "scored": 6,
         "failed": 0
       },
       "kg_rag": {
-        "correctness": 2.83,
-        "completeness": 2.17,
+        "correctness": 3.17,
+        "completeness": 2.33,
         "citation_accuracy": 4.67,
-        "overall": 3.22,
+        "overall": 3.39,
         "scored": 6,
         "failed": 0
       },
-      "delta_overall": 0.88,
+      "delta_overall": 0.22,
       "graph_share": 0.5
     },
     "ALL": {
       "n": 20,
       "basic_rag": {
-        "correctness": 3.65,
-        "completeness": 2.85,
-        "citation_accuracy": 4.4,
-        "overall": 3.63,
+        "correctness": 4,
+        "completeness": 3.55,
+        "citation_accuracy": 4.5,
+        "overall": 4.02,
         "scored": 20,
         "failed": 0
       },
       "kg_rag": {
-        "correctness": 4.3,
-        "completeness": 3.95,
+        "correctness": 4.4,
+        "completeness": 3.9,
         "citation_accuracy": 4.9,
-        "overall": 4.38,
+        "overall": 4.4,
         "scored": 20,
         "failed": 0
       },
-      "delta_overall": 0.75,
+      "delta_overall": 0.38,
       "graph_share": 0.36
     }
   },
   "meta_config": {
     "model": "gemini-3.5-flash-lite",
-    "basic_top_k": 5
+    "basic_top_k": 12
   },
   "meta": {
     "questions": 20,
-    "elapsed_minutes": 6.9
+    "elapsed_minutes": 6.4
   }
 }

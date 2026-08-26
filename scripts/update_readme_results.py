@@ -25,7 +25,15 @@ START_MARKER = "<!-- RESULTS_TABLE_START -->"
 END_MARKER = "<!-- RESULTS_TABLE_END -->"
 
 
-def build_table(data: dict) -> str:
+LABELS = {
+    "simple": "Simple (single-doc)",
+    "medium": "Medium (cross-doc, 1-2 hops)",
+    "hard": "**Hard (multi-hop, 3+)**",
+    "ALL": "All",
+}
+
+
+def _table(data: dict, source_name: str) -> str:
     summary = data["summary"]
     meta = data.get("meta", {})
 
@@ -33,10 +41,6 @@ def build_table(data: dict) -> str:
         "| Tier | n | Basic RAG | KG-RAG | Delta | Graph share of evidence |",
         "|---|---:|---:|---:|---:|---:|",
     ]
-    label = {"simple": "Simple (single-doc)",
-             "medium": "Medium (cross-doc, 1-2 hops)",
-             "hard": "**Hard (multi-hop, 3+)**",
-             "ALL": "All"}
 
     for tier in ("simple", "medium", "hard", "ALL"):
         if tier not in summary:
@@ -46,23 +50,64 @@ def build_table(data: dict) -> str:
         kgrag = entry["kg_rag"]["overall"]
         delta = entry["delta_overall"]
         bold = tier == "hard"
-        fmt = (lambda v: f"**{v:.2f}**") if bold else (lambda v: f"{v:.2f}")
+        mark = "**" if bold else ""
         lines.append(
-            f"| {label[tier]} | {entry['n']} | {fmt(basic)} | {fmt(kgrag)} | "
-            f"{'**' if bold else ''}{delta:+.2f}{'**' if bold else ''} | "
+            f"| {LABELS[tier]} | {entry['n']} | {mark}{basic:.2f}{mark} | "
+            f"{mark}{kgrag:.2f}{mark} | {mark}{delta:+.2f}{mark} | "
             f"{entry['graph_share']:.0%} |"
         )
 
+    failed = sum(summary[t]["kg_rag"].get("failed", 0)
+                 for t in ("simple", "medium", "hard") if t in summary)
+    if failed:
+        lines.append("")
+        lines.append(f"> **Incomplete run:** {failed} question(s) produced no answer "
+                     f"(API failure) and are excluded from these means. Re-run before "
+                     f"quoting these numbers.")
+
     lines.append("")
-    lines.append("*Scores are the mean of correctness, completeness and citation accuracy, "
-                 "each judged 1-5 against a hand-written reference answer.*")
-
-    if meta:
-        lines.append(f"*Generated from `data/eval_results.json` "
-                     f"({meta.get('questions', '?')} questions, "
-                     f"{meta.get('elapsed_minutes', '?')} min run).*")
-
+    lines.append(f"<sub>From `{source_name}` "
+                 f"({meta.get('questions', '?')} questions, "
+                 f"{meta.get('elapsed_minutes', '?')} min).</sub>")
     return "\n".join(lines)
+
+
+def build_table(data: dict, controlled: dict | None = None) -> str:
+    """
+    Render the headline table, and - when a controlled run exists - a second one
+    that matches the evidence budgets.
+
+    Why two tables. The default comparison pits the full KG-RAG system (12
+    evidence items, cross-encoder re-ranked, graph included) against the standard
+    basic-RAG baseline (5 chunks). That is the honest SYSTEM-vs-SYSTEM number,
+    and it is what a user would actually experience - but it does not isolate the
+    graph, because KG-RAG also gets 2.4x the context. The controlled run gives
+    basic RAG the same 12 items, so the remaining difference is attributable to
+    graph retrieval rather than to context budget.
+    """
+    parts = [
+        "**System vs system** — full KG-RAG against the standard basic-RAG baseline:",
+        "",
+        _table(data, "data/eval_results.json"),
+    ]
+
+    if controlled:
+        parts += [
+            "",
+            "**Controlled** — basic RAG given the *same* 12 evidence items, so the only "
+            "remaining difference is graph retrieval:",
+            "",
+            _table(controlled, "data/eval_results_controlled.json"),
+        ]
+
+    parts += [
+        "",
+        "<sub>Each score is the mean of correctness, completeness and citation accuracy, "
+        "judged 1-5 against a hand-written reference answer. Per-question answers and the "
+        "judge's reasoning are in the JSON files, so any number here can be checked by "
+        "hand.</sub>",
+    ]
+    return "\n".join(parts)
 
 
 def main() -> None:
@@ -72,7 +117,12 @@ def main() -> None:
         )
 
     data = json.loads(EVAL_RESULTS_PATH.read_text(encoding="utf-8"))
-    table = build_table(data)
+
+    controlled_path = EVAL_RESULTS_PATH.parent / "eval_results_controlled.json"
+    controlled = (json.loads(controlled_path.read_text(encoding="utf-8"))
+                  if controlled_path.exists() else None)
+
+    table = build_table(data, controlled)
 
     readme = README_PATH.read_text(encoding="utf-8")
     if START_MARKER not in readme or END_MARKER not in readme:

@@ -163,12 +163,23 @@ be that. Giving basic RAG the same 12 items isolates what graph retrieval actual
 
 | Tier | n | Basic RAG | KG-RAG | Delta | Graph share of evidence |
 |---|---:|---:|---:|---:|---:|
+| Simple (single-doc) | 7 | 4.29 | 4.95 | +0.66 | 26% |
+| Medium (cross-doc, 1-2 hops) | 7 | 4.10 | 4.81 | +0.71 | 33% |
+| **Hard (multi-hop, 3+)** | 6 | **2.34** | **3.22** | **+0.88** | 50% |
+| All | 20 | 3.63 | 4.38 | +0.75 | 36% |
+
+<sub>From `data/eval_results.json` (20 questions, 6.9 min).</sub>
+
+**Controlled** — basic RAG given the *same* 12 evidence items, so the only remaining difference is graph retrieval:
+
+| Tier | n | Basic RAG | KG-RAG | Delta | Graph share of evidence |
+|---|---:|---:|---:|---:|---:|
 | Simple (single-doc) | 7 | 4.47 | 4.86 | +0.39 | 26% |
 | Medium (cross-doc, 1-2 hops) | 7 | 4.29 | 4.81 | +0.52 | 33% |
 | **Hard (multi-hop, 3+)** | 6 | **3.17** | **3.39** | **+0.22** | 50% |
 | All | 20 | 4.02 | 4.40 | +0.38 | 36% |
 
-<sub>From `data/eval_results.json` (20 questions, 6.4 min).</sub>
+<sub>From `data/eval_results_controlled.json` (20 questions, 6.4 min).</sub>
 
 <sub>Each score is the mean of correctness, completeness and citation accuracy, judged 1-5 against a hand-written reference answer. Per-question answers and the judge's reasoning are in the JSON files, so any number here can be checked by hand.</sub>
 <!-- RESULTS_TABLE_END -->

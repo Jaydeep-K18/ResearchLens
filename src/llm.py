@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -54,7 +55,12 @@ GEMINI_MODEL_CANDIDATES = [
     "gemini-3.6-flash",
     "gemini-3.5-flash",
     "gemini-flash-latest",
+    # The -lite models carry their OWN free-tier quota, so they keep working
+    # after the full flash models are exhausted. That makes them the difference
+    # between a completed evaluation run and an abandoned one.
     "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-lite-latest",
 ]
 GROQ_MODEL_CANDIDATES = [
     "llama-3.3-70b-versatile",
@@ -206,10 +212,26 @@ class LLMClient:
             except Exception as exc:  # noqa: BLE001 - we classify below
                 message = str(exc).lower()
                 last_error = exc
-                # A missing/retired model is worth retrying with the next
-                # candidate. A quota error is not - it will fail identically.
+
+                # A retired model: try the next candidate.
                 if "not found" in message or "404" in message or "unsupported" in message:
                     continue
+
+                # Quota exhaustion: ALSO try the next candidate. Free-tier
+                # quotas are per-model, so when gemini-3.6-flash is spent the
+                # -lite models still answer.
+                #
+                # This used to `raise` on the reasoning that a quota error
+                # "will fail identically" on retry. That was wrong in the way
+                # that matters: it fails identically on the SAME model, not on a
+                # different one. The consequence was a 20-question evaluation
+                # that ran out of quota at question 4 and then returned an empty
+                # answer for all 17 remaining questions.
+                if ("429" in message or "resource_exhausted" in message
+                        or "quota" in message):
+                    print(f"  [gemini] {model_name} quota exhausted - trying next model")
+                    continue
+
                 raise
 
         raise last_error or RuntimeError("no Gemini model available")
@@ -292,7 +314,16 @@ class LLMClient:
                                        "504", "deadline", "empty response")
                     )
                     if transient and attempt < retries - 1:
-                        delay = (2 ** attempt) + random.uniform(0, 1)
+                        # Gemini tells us exactly how long to wait
+                        # ("Please retry in 23.66039426s"). Honour that instead
+                        # of guessing - exponential backoff from 2s reliably
+                        # under-waits a per-minute window and burns the retry
+                        # budget on calls that cannot succeed yet.
+                        hint = re.search(r"retry in (\d+(?:\.\d+)?)s", message)
+                        if hint:
+                            delay = min(float(hint.group(1)) + 1.0, 65.0)
+                        else:
+                            delay = (2 ** attempt) + random.uniform(0, 1)
                         print(f"  [{provider}] {message[:90]} - retrying in {delay:.1f}s")
                         time.sleep(delay)
                         continue
