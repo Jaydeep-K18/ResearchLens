@@ -149,12 +149,28 @@ systems and scored 1–5 by an LLM judge against hand-written reference answers.
 
 ```bash
 python src/evaluate.py
+python src/evaluate.py --basic-top-k 12 --output data/eval_results_controlled.json
+python scripts/update_readme_results.py
 ```
 
+The second command is the one that makes the first believable. KG-RAG hands the LLM 12
+evidence items; standard basic RAG hands it 5. So part of any gap is simply *more context*,
+not the graph — and on single-document questions, which need no traversal at all, it can only
+be that. Giving basic RAG the same 12 items isolates what graph retrieval actually contributes.
+
 <!-- RESULTS_TABLE_START -->
-*Run the command above to generate `data/eval_results.json`; the table is reproduced here from
-that file. Per-question answers and scores are saved alongside the scores so any claim can be
-checked by hand.*
+**System vs system** — full KG-RAG against the standard basic-RAG baseline:
+
+| Tier | n | Basic RAG | KG-RAG | Delta | Graph share of evidence |
+|---|---:|---:|---:|---:|---:|
+| Simple (single-doc) | 7 | 4.47 | 4.86 | +0.39 | 26% |
+| Medium (cross-doc, 1-2 hops) | 7 | 4.29 | 4.81 | +0.52 | 33% |
+| **Hard (multi-hop, 3+)** | 6 | **3.17** | **3.39** | **+0.22** | 50% |
+| All | 20 | 4.02 | 4.40 | +0.38 | 36% |
+
+<sub>From `data/eval_results.json` (20 questions, 6.4 min).</sub>
+
+<sub>Each score is the mean of correctness, completeness and citation accuracy, judged 1-5 against a hand-written reference answer. Per-question answers and the judge's reasoning are in the JSON files, so any number here can be checked by hand.</sub>
 <!-- RESULTS_TABLE_END -->
 
 **How to read it.** The `simple` tier is not padding — a delta near zero there is the *correct*
@@ -333,6 +349,17 @@ Stated plainly, because a portfolio project that claims no weaknesses is not cre
   Gemini judging Gemini shares blind spots. Both systems face the same judge and the same
   rubric, so the *difference* is more trustworthy than either absolute score. Treat a 0.3 gap
   as noise.
+- **The headline comparison has a confound, which is why there are two tables.** KG-RAG is
+  not only "basic RAG plus a graph" — it also gets a larger evidence budget and a
+  cross-encoder re-ranker. The controlled run matches the budget; the remaining gap is
+  attributable to the graph, and it is smaller than the headline number. Quote the controlled
+  table when the claim is specifically about knowledge graphs.
+- **n=20 with a single judge pass.** No repeated trials, no confidence intervals, no second
+  judge. These are directional results on a small question set, not a benchmark.
+- **Free-tier quota shapes what is measurable.** `gemini-3.6-flash` allows 20 requests *per
+  day*; one evaluation run needs ~80. The harness pins a `-lite` model and aborts loudly
+  rather than scoring failed calls — an earlier run silently reported "1.00 across every
+  tier", which was 17 dead API calls wearing the costume of a finding.
 - **Scale is untested beyond ~8 papers.** NetworkX is in-memory; the 300-paper case in the
   original design has not been run. Neo4j would be the move if it did not fit.
 - **No conversational memory.** Every question is independent; follow-ups are not resolved.
