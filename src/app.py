@@ -217,9 +217,32 @@ def process_uploads(uploads, run_rebel: bool) -> None:
     store.add_chunks(chunks, show_progress=False)
     progress.progress(0.65, text="Vector store updated. Extracting relations ...")
 
-    from src.knowledge_extractor import extract_all, save_triples
+    from src.knowledge_extractor import extract_all, load_triples, save_triples
 
-    triples = extract_all(use_rebel=run_rebel, use_domain=True, resume=False)
+    fresh = extract_all(use_rebel=run_rebel, use_domain=True, resume=False)
+
+    # MERGE, never overwrite.
+    #
+    # extract_all() returns only what it just ran. With REBEL off - the default,
+    # because it costs ~1.3s/sentence - that is ~390 domain+metadata triples.
+    # Writing those straight to triples.json would DELETE the ~7,000 REBEL
+    # triples already on disk, silently collapsing the graph from 6,833
+    # relations to a few hundred. The user would see "processed successfully"
+    # and a gutted knowledge graph.
+    #
+    # So: keep existing REBEL triples (still valid for the documents they came
+    # from), and let the freshly-extracted domain/metadata triples - which cover
+    # the whole corpus including the new uploads - replace their counterparts.
+    if run_rebel:
+        triples = fresh                      # REBEL re-ran over everything
+    else:
+        existing_rebel = [t for t in load_triples() if t.get("extractor") == "rebel"]
+        triples = existing_rebel + fresh
+        st.sidebar.caption(
+            f"Kept {len(existing_rebel):,} existing REBEL relations. New PDFs have "
+            "dependency-parse relations only — tick the REBEL box (slow) for full extraction."
+        )
+
     save_triples(triples)
     progress.progress(0.9, text=f"{len(triples)} triples. Building graph ...")
 
