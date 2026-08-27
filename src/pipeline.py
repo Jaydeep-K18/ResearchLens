@@ -98,6 +98,8 @@ class KGRagState(TypedDict, total=False):
     the two dicts instead of rejecting them.
     """
     query: str
+    original_query: str
+    resolved_query: str
     vector_results: list
     graph_results: list
     merged_results: list
@@ -112,7 +114,7 @@ class KGRagState(TypedDict, total=False):
 # The prompt (Step 6.3)
 # ---------------------------------------------------------------------------
 
-SYNTHESIS_PROMPT = """You are a research assistant answering questions about a corpus of computer vision papers. You have been given evidence retrieved by two different systems. Answer using ONLY that evidence.
+SYNTHESIS_PROMPT = """You are a research assistant answering questions about a collection of documents the user has uploaded. You have been given evidence retrieved by two different systems. Answer using ONLY that evidence.
 
 # HOW TO READ THE EVIDENCE
 
@@ -123,7 +125,7 @@ Each item is labelled with how it was retrieved:
 
 - [GRAPH] - a relationship the system extracted from the papers and connected
   across documents. It shows a chain like
-      DETR --[outperforms]--> Faster R-CNN --[proposed by]--> Ren et al.
+      Method B --[outperforms]--> Method A --[proposed by]--> Author C
   along with the sentence each link came from. A multi-hop chain is an INFERENCE
   the system assembled - no single paper states it. It is often the only route
   to the answer, and it is also the more fragile kind of evidence.
@@ -135,9 +137,9 @@ Each item is labelled with how it was retrieved:
 2. Cite every factual claim inline as [Source: filename.pdf, p.N], using the
    labels exactly as shown in the evidence.
 3. When your answer depends on connecting several sources, show the chain
-   explicitly. For example: "DETR outperforms Faster R-CNN [Source: detr.pdf,
-   p.1], and Faster R-CNN was proposed by Ren et al. [Source: faster_rcnn.pdf,
-   p.2], so the authors in question are Ren et al."
+   explicitly. For example: "B outperforms A [Source: second.pdf, p.1], and A
+   was proposed by C [Source: first.pdf, p.2], so the authors in question
+   are C."
 4. Distinguish what papers STATE from what the graph CONNECTS. Use wording like
    "X reports that..." for [TEXT] evidence and "connecting these sources
    suggests..." for multi-hop [GRAPH] chains.
@@ -157,6 +159,64 @@ Each item is labelled with how it was retrieved:
 
 # ANSWER
 """
+
+
+CONDENSE_PROMPT = """Given a conversation and a follow-up question, rewrite the follow-up as a STANDALONE question that can be understood without the conversation.
+
+Rules:
+- Resolve pronouns and references ("it", "those", "the second one") using the conversation.
+- Keep the user's wording and intent. Do not answer, expand, or add detail they did not ask for.
+- If the question already stands alone, return it UNCHANGED.
+- Output ONLY the rewritten question. No preamble, no quotes, no explanation.
+
+CONVERSATION:
+{history}
+
+FOLLOW-UP QUESTION: {question}
+
+STANDALONE QUESTION:"""
+
+
+def condense_question(history: list[dict], question: str) -> str:
+    """
+    Rewrite a follow-up into a standalone question using the chat's prior turns.
+
+    Why this is necessary: retrieval is stateless. "What about the second one?"
+    embeds to nothing useful and names no entity, so both the vector search and
+    the graph walk come back empty or irrelevant. The question has to be made
+    self-contained BEFORE retrieval, not after.
+
+    Failure is non-fatal by design. If the LLM is unavailable or returns
+    something implausible, we fall back to the original question - a follow-up
+    answered poorly is much better than a chat that errors out. The caller stores
+    both forms in state so the UI can show what was actually searched, because a
+    silent bad rewrite would otherwise look like a retrieval bug.
+    """
+    if not history:
+        return question
+
+    transcript = "\n".join(
+        f"{'User' if turn['role'] == 'user' else 'Assistant'}: {turn['content'][:400]}"
+        for turn in history
+    )
+
+    try:
+        llm = get_llm()
+        if not llm.available:
+            return question
+        rewritten = llm.generate(
+            CONDENSE_PROMPT.format(history=transcript, question=question),
+            temperature=0.0, max_tokens=256,
+        ).strip()
+    except Exception:  # noqa: BLE001 - never let condensing break the chat
+        return question
+
+    # Sanity-check the rewrite. A model that returns a paragraph, an empty string,
+    # or something wildly longer than asked has misunderstood the instruction.
+    rewritten = rewritten.strip().strip('"').split("\n")[0].strip()
+    if not rewritten or len(rewritten) > max(400, len(question) * 6):
+        return question
+    return rewritten
 
 
 def format_evidence(results: list[dict]) -> str:
@@ -236,6 +296,14 @@ class KGRagPipeline:
         from src import graph_retriever
 
         started = time.time()
+        # A workspace can legitimately have documents embedded but no graph yet -
+        # extraction runs after embedding, and the fast path still takes a moment.
+        # Returning empty here degrades to vector-only retrieval instead of
+        # crashing, which is what the UI used to do (it warned that vector-only
+        # was available and then returned without rendering the question box).
+        if self.retriever.kg is None:
+            return {"graph_results": [], "timings": {"graph": 0.0}}
+
         results = graph_retriever.retrieve(
             state["query"], self.retriever.kg,
             hops=self.graph_hops, max_evidence=self.vector_k * 2,
@@ -333,12 +401,36 @@ class KGRagPipeline:
 
     # -- public API --------------------------------------------------------
 
-    def run(self, query: str) -> KGRagState:
+    def run(self, query: str, history: list[dict] | None = None) -> KGRagState:
+        """
+        Answer one question, optionally in the context of a chat's prior turns.
+
+        `history` is [{"role": "user"|"assistant", "content": str}, ...] from ONE
+        chat. When present, the question is first rewritten into a standalone one
+        (see condense_question) so retrieval has something searchable - "what
+        about the second one?" retrieves nothing on its own.
+        """
         started = time.time()
-        # Per-node timings are merged by the reducer on the `timings` key; we
-        # only add the wall-clock total, which nothing else writes.
-        state: KGRagState = self.workflow.invoke({"query": query})
-        state["timings"] = {**(state.get("timings") or {}), "total": time.time() - started}
+
+        resolved = query
+        condense_seconds = 0.0
+        if history:
+            condense_started = time.time()
+            resolved = condense_question(history, query)
+            condense_seconds = time.time() - condense_started
+
+        # Condensing happens here rather than as a LangGraph node on purpose: it
+        # runs only for follow-ups, and a conditional entry edge would complicate
+        # the DAG for no benefit. The parallel fan-out below is untouched.
+        state: KGRagState = self.workflow.invoke({"query": resolved})
+
+        state["original_query"] = query
+        state["resolved_query"] = resolved
+        state["timings"] = {
+            **(state.get("timings") or {}),
+            **({"condense": condense_seconds} if history else {}),
+            "total": time.time() - started,
+        }
         return state
 
     def diagram(self) -> str:

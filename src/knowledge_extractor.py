@@ -46,7 +46,15 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.utils import PROCESSED_DIR, TRIPLES_PATH, banner, ensure_dirs, setup_console  # noqa: E402
+from src.utils import (  # noqa: E402
+    PROCESSED_DIR,
+    RAW_DIR,
+    TRIPLES_PATH,
+    banner,
+    ensure_dirs,
+    setup_console,
+)
+from src.relation_extractor import extract_domain_triples  # noqa: E402
 
 # REBEL degrades at both extremes: very short sentences carry no relation, and
 # very long ones get truncated mid-thought and produce scrambled triples.
@@ -320,6 +328,166 @@ def split_into_sentences(docs: list[dict], nlp) -> list[dict]:
     return sentences
 
 
+def get_nlp():
+    """
+    The shared spaCy pipeline, configured once.
+
+    Keep the parser AND the lemmatizer: extract_domain_triples looks verbs up by
+    lemma, so "outperforms"/"outperformed"/"outperform" all map to one relation.
+    Disabling the lemmatizer for speed once made lemma_ unreliable and silently
+    produced ZERO domain triples - the pipeline ran clean and found nothing.
+    NER stays off: it is unreliable on this text (notebooks/02_ner_demo.py).
+    """
+    import spacy
+
+    nlp = spacy.load("en_core_web_sm", disable=["ner"])
+    nlp.max_length = 3_000_000
+    return nlp
+
+
+def extract_document(doc: dict, nlp, rebel=None, batch_size: int = 8) -> list[dict]:
+    """
+    Run extraction over ONE cleaned document and return its triples.
+
+    This is the unit the whole incremental design rests on. Everything it needs is
+    inside `doc`, because document cleaning has no cross-document state -
+    find_repeating_lines compares pages within a single document, and
+    find_reference_span works on that document's own text. So extracting one
+    document in isolation is equivalent to extracting it as part of a corpus.
+
+    `rebel` is an optional loaded RelationExtractor. Passing None runs the fast
+    path only (dependency parsing plus title-block metadata), which is what the
+    UI does: at ~50 documents REBEL is five to six hours and the fast path is
+    about two minutes.
+    """
+    sentences = split_into_sentences([doc], nlp)
+    if not sentences:
+        return []
+
+    triples: list[dict] = []
+
+    # -- fast path: dependency parsing ------------------------------------
+    texts = [item["text"] for item in sentences]
+    for item, parsed in zip(sentences, nlp.pipe(texts, batch_size=64)):
+        for triple in extract_domain_triples(parsed):
+            triples.append({
+                **triple,
+                "source_file": item["source_file"],
+                "page": item["page"],
+                "sentence": item["text"],
+                "extractor": "domain",
+            })
+
+    # -- slow path: REBEL, only when a model was handed in -----------------
+    if rebel is not None:
+        for start in range(0, len(sentences), batch_size):
+            batch = sentences[start:start + batch_size]
+            for item, found in zip(batch, rebel.extract_batch(
+                    [s["text"] for s in batch], batch_size=batch_size)):
+                for triple in found:
+                    triples.append({
+                        **triple,
+                        "source_file": item["source_file"],
+                        "page": item["page"],
+                        "sentence": item["text"],
+                        "extractor": "rebel",
+                    })
+
+    # -- title block: paper node and authorship ----------------------------
+    triples.extend(build_metadata_triples([doc], triples))
+    return triples
+
+
+def ingest_documents(doc_ids: list[str] | None = None, use_rebel: bool = False,
+                     progress=None) -> dict:
+    """
+    Process workspace documents that need it, one document at a time.
+
+    `progress(index, total, filename, stage)` is an optional callback so the UI can
+    report "document 12 of 50" instead of sitting silent through one long call.
+
+    Returns a summary dict. The graph is NOT rebuilt here - the caller does that
+    once, after all documents are in, because graph construction is the one stage
+    that is genuinely whole-corpus.
+    """
+    from src.chunker import chunk_fixed
+    from src.ingestion import clean_document, extract_pdf
+    from src.vector_store import VectorStore
+    from src import workspace
+
+    manifest = workspace.load_manifest()
+    if doc_ids is None:
+        doc_ids = [
+            doc_id for doc_id, record in manifest.items()
+            if record.get("status") != "processed"
+            or (use_rebel and workspace.REBEL not in record.get("extractors_run", []))
+        ]
+    if not doc_ids:
+        return {"processed": 0, "failed": 0, "chunks": 0, "triples": 0}
+
+    nlp = get_nlp()
+    store = VectorStore()
+
+    rebel = None
+    if use_rebel:
+        from src.relation_extractor import RelationExtractor
+        rebel = RelationExtractor()
+
+    processed = failed = total_chunks = total_triples = 0
+
+    for index, doc_id in enumerate(doc_ids, start=1):
+        record = manifest.get(doc_id)
+        if record is None:
+            continue
+        filename = record["filename"]
+        if progress:
+            progress(index, len(doc_ids), filename, "reading")
+
+        try:
+            raw = extract_pdf(RAW_DIR / filename)
+            if raw is None:
+                raise ValueError("could not extract text (scanned or encrypted?)")
+            doc = clean_document(raw)
+
+            if progress:
+                progress(index, len(doc_ids), filename, "embedding")
+            chunks = chunk_fixed(doc)
+            # Delete first: a re-processed document may yield FEWER chunks than
+            # before, and upsert only overwrites the ids it is handed, so the old
+            # high-numbered ids would survive as orphans pointing at stale text.
+            store.delete_by_source(filename)
+            store.add_chunks(chunks, show_progress=False)
+
+            if progress:
+                progress(index, len(doc_ids), filename,
+                         "extracting relations (REBEL)" if rebel else "extracting relations")
+            triples = extract_document(doc, nlp, rebel=rebel)
+            workspace.save_document_triples(doc_id, triples)
+
+            extractors = [workspace.DOMAIN] + ([workspace.REBEL] if rebel else [])
+            workspace.update_document(
+                doc_id,
+                n_pages=len(doc.get("pages", [])),
+                n_chunks=len(chunks),
+                n_triples=len(triples),
+                extractors_run=sorted(set(record.get("extractors_run", []) + extractors)),
+                status="processed",
+                error="",
+            )
+            processed += 1
+            total_chunks += len(chunks)
+            total_triples += len(triples)
+
+        except Exception as exc:  # noqa: BLE001 - one bad PDF must not stop the batch
+            workspace.update_document(doc_id, status="failed", error=str(exc)[:300])
+            failed += 1
+            if progress:
+                progress(index, len(doc_ids), filename, f"FAILED: {str(exc)[:80]}")
+
+    return {"processed": processed, "failed": failed,
+            "chunks": total_chunks, "triples": total_triples}
+
+
 def extract_all(
     limit: int | None = None,
     batch_size: int = 8,
@@ -457,9 +625,29 @@ def save_triples(triples: list[dict], path: Path = TRIPLES_PATH) -> None:
 
 
 def load_triples(path: Path = TRIPLES_PATH) -> list[dict]:
+    """
+    Every triple in the workspace.
+
+    Prefers the per-document files; falls back to the legacy single triples.json
+    so a workspace built before the split keeps working.
+
+    Returns [] for an absent file rather than raising. It used to `raise
+    SystemExit`, which crashed the very first upload on a clean install - the
+    upload handler called this to merge, and on a fresh workspace there is by
+    definition nothing to merge with. An empty workspace is a normal state, not
+    an error.
+    """
+    from src.workspace import load_all_triples
+
+    per_document = load_all_triples()
+    if per_document:
+        return per_document
     if not path.exists():
-        raise SystemExit(f"{path} not found. Run: python src/knowledge_extractor.py")
-    return json.loads(path.read_text(encoding="utf-8"))
+        return []
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
 
 
 def print_stats(triples: list[dict]) -> None:

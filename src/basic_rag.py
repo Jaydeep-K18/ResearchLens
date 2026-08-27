@@ -56,7 +56,7 @@ DEFAULT_TOP_K = 5
 #   - "ONLY the context"    stops the model answering from its training memory
 #   - "say so explicitly"   gives it a licence to fail, so it does not invent
 #   - "[Source: file, p.N]" makes every claim checkable against the corpus
-PROMPT_TEMPLATE = """You are a research assistant answering questions about a corpus of computer vision papers.
+PROMPT_TEMPLATE = """You are a research assistant answering questions about a collection of documents the user has uploaded.
 
 Answer the QUESTION using ONLY the CONTEXT below. Follow these rules strictly:
 1. Use only facts present in the CONTEXT. Do not use outside knowledge.

@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -177,11 +178,39 @@ def resolve_entities(query: str, kg: KnowledgeGraph, threshold: int = 82,
     return ranked[:max_entities]
 
 
+@lru_cache(maxsize=256)
+def _cue_pattern(cue: str) -> re.Pattern:
+    """
+    Matcher for one cue phrase: word-boundary anchored, inflections allowed.
+
+    The suffix group is what makes this usable. A bare \\b...\\b is too strict -
+    it stops "beat" matching "beats" and "propose" matching "proposed", which
+    are exactly the phrasings users type. Allowing arbitrary continuation
+    (\\w*) is too loose - it lets "map" match "mapping". Enumerating the
+    inflectional endings gets both right:
+
+        beat    -> beats     matched      (suffix "s")
+        propose -> proposed  matched      (suffix "d")
+        map     -> mapping   NOT matched  ("ping" is not an inflection)
+        use     -> because   NOT matched  (no word boundary before "use")
+    """
+    return re.compile(r"\b" + re.escape(cue) + r"(?:s|es|d|ed|ing|n)?\b")
+
+
 def detect_relation_cues(query: str) -> list[str]:
-    """Which relation types is this question about? Empty list means 'no preference'."""
+    """
+    Which relation types is this question about? Empty list means 'no preference'.
+
+    Matching is on WORD BOUNDARIES, not raw substrings. Plain `cue in lowered`
+    misfires badly and silently: the cue "map" (mean average precision) fired on
+    "mapping" and "roadmap"; "use" fired on "because" and "household", so almost
+    any question was cued for the `uses` relation. A wrongly-detected cue is not
+    harmless - it adds +1.2 to matching edges and -0.15 to everything else, which
+    is enough to reorder the entire evidence list.
+    """
     lowered = query.lower()
     return [relation for relation, cues in _RELATION_CUES.items()
-            if any(cue in lowered for cue in cues)]
+            if any(_cue_pattern(cue).search(lowered) for cue in cues)]
 
 
 # ---------------------------------------------------------------------------

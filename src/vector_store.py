@@ -224,6 +224,35 @@ class VectorStore:
             strategies[key] = strategies.get(key, 0) + 1
         return {"total_chunks": total, "files": files, "strategies": strategies}
 
+    def delete_by_source(self, source_file: str) -> int:
+        """
+        Remove every chunk belonging to one document.
+
+        Until this existed the ONLY deletion available was reset(), which wipes the
+        whole collection - so removing a single bad PDF from a fifty-document
+        workspace meant re-embedding the other forty-nine. `source_file` has been
+        stored as filterable metadata since the beginning (see to_metadata in
+        add_chunks) and search() already accepts a `where` clause; the data
+        supported this all along, nothing used it.
+
+        Also the fix for orphaned chunks: if a document is re-processed and yields
+        fewer chunks than before, the stale high-numbered ids would otherwise
+        linger for ever, because upsert only overwrites ids it is given. Callers
+        should delete-by-source first, then add.
+
+        Returns the number of chunks removed.
+        """
+        existing = self.collection.get(where={"source_file": source_file}, include=[])
+        ids = existing.get("ids", [])
+        if ids:
+            self.collection.delete(ids=ids)
+        return len(ids)
+
+    def count_by_source(self, source_file: str) -> int:
+        """How many chunks this document currently contributes."""
+        found = self.collection.get(where={"source_file": source_file}, include=[])
+        return len(found.get("ids", []))
+
     def reset(self) -> None:
         """Delete and recreate the collection. Used when re-chunking from scratch."""
         self.client.delete_collection(self.collection_name)

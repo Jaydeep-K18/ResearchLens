@@ -71,7 +71,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.utils import banner, setup_console  # noqa: E402
+from src.utils import GRAPH_PATH, banner, setup_console  # noqa: E402
 
 CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 DEFAULT_TOP_K = 8
@@ -161,8 +161,20 @@ class HybridRetriever:
         from src.vector_store import VectorStore
 
         self.store = store if store is not None else VectorStore()
-        self.kg = kg if kg is not None else KnowledgeGraph.load()
         self.cross_encoder_name = cross_encoder_name
+
+        # A missing graph is a normal state, not an error: a fresh workspace has
+        # documents embedded before extraction finishes, and the user should be
+        # able to ask questions in the meantime. This used to call
+        # KnowledgeGraph.load() unconditionally, which raises SystemExit when the
+        # pickle is absent - so constructing a retriever on an empty workspace
+        # killed the process. Retrieval degrades to vector-only when kg is None.
+        if kg is not None:
+            self.kg = kg
+        elif GRAPH_PATH.exists():
+            self.kg = KnowledgeGraph.load()
+        else:
+            self.kg = None
 
     def retrieve(
         self,
@@ -194,7 +206,9 @@ class HybridRetriever:
         timings["vector"] = time.time() - started
 
         started = time.time()
-        graph_results = graph_retriever.retrieve(
+        # No graph yet (fresh workspace, extraction still pending) means
+        # vector-only retrieval rather than a crash.
+        graph_results = [] if self.kg is None else graph_retriever.retrieve(
             query, self.kg, hops=graph_hops, max_evidence=vector_k * 2, verbose=verbose
         )
         timings["graph"] = time.time() - started

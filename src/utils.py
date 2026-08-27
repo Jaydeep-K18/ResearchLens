@@ -16,19 +16,43 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-RAW_DIR = DATA_DIR / "raw"
-PROCESSED_DIR = DATA_DIR / "processed"
-CHROMA_DIR = DATA_DIR / "chroma_db"
 
-TRIPLES_PATH = PROCESSED_DIR / "triples.json"
+# ---------------------------------------------------------------------------
+# The workspace
+# ---------------------------------------------------------------------------
+# Everything the user owns - their PDFs, both memories built from them, and
+# their chat history - lives under ONE directory. That is what makes "delete my
+# workspace" a single rmtree rather than a list of paths that will inevitably
+# drift out of sync with reality.
+#
+# EVAL_RESULTS_PATH is deliberately OUTSIDE the workspace. It is benchmark
+# evidence about the optional demo corpus, committed to the repo, and must
+# survive a workspace deletion.
+WORKSPACE_DIR = DATA_DIR / "workspace"
+RAW_DIR = WORKSPACE_DIR / "raw"
+PROCESSED_DIR = WORKSPACE_DIR / "processed"
+CHROMA_DIR = WORKSPACE_DIR / "chroma_db"
+CHATS_DIR = WORKSPACE_DIR / "chats"
+
+# Per-document triples. One file per document rather than a single triples.json,
+# so adding or removing one document does not rewrite (or risk destroying) the
+# extraction output of every other document.
+TRIPLES_DIR = PROCESSED_DIR / "triples"
+MANIFEST_PATH = PROCESSED_DIR / "manifest.json"
+
 GRAPH_PATH = PROCESSED_DIR / "knowledge_graph.gpickle"
 GRAPH_VIZ_PATH = PROCESSED_DIR / "graph_viz.html"
+
+# Legacy single-file triples path. Still read by load_triples() so an existing
+# workspace keeps working, but nothing writes it any more.
+TRIPLES_PATH = PROCESSED_DIR / "triples.json"
+
 EVAL_RESULTS_PATH = DATA_DIR / "eval_results.json"
 
 
 def ensure_dirs() -> None:
-    """Create the data folders if they do not exist yet."""
-    for directory in (RAW_DIR, PROCESSED_DIR):
+    """Create the workspace folders if they do not exist yet."""
+    for directory in (RAW_DIR, PROCESSED_DIR, TRIPLES_DIR, CHATS_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
 
