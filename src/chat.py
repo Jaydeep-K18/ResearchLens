@@ -133,11 +133,32 @@ def rename_chat(chat_id: str, title: str) -> None:
     _save_index(chats)
 
 
+def _json_safe(value):
+    """
+    Fallback encoder for values json.dumps cannot handle on its own.
+
+    Necessary because the evidence stored on an assistant message comes straight
+    from the retriever, and deduplicate() records `also_found_by` as a SET.
+    json.dumps raises TypeError on a set, which meant the answer was generated,
+    displayed, and then lost when the write failed - leaving the user's question
+    in the transcript with no reply.
+
+    Converting here rather than at the call site keeps the persistence layer
+    responsible for being persistable, so a new field on an evidence item cannot
+    silently break saving again.
+    """
+    if isinstance(value, (set, frozenset)):
+        return sorted(value)
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 def _write_chat(chat: dict) -> None:
     ensure_dirs()
     chat["updated_at"] = _now()
     _chat_path(chat["chat_id"]).write_text(
-        json.dumps(chat, ensure_ascii=False), encoding="utf-8"
+        json.dumps(chat, ensure_ascii=False, default=_json_safe), encoding="utf-8"
     )
 
 

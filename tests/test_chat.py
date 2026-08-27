@@ -218,3 +218,24 @@ def test_missing_llm_key_does_not_break_follow_ups(monkeypatch):
 
     monkeypatch.setattr(pipeline, "get_llm", lambda: NoKey())
     assert pipeline.condense_question([{"role": "user", "content": "x"}], "and?") == "and?"
+
+
+def test_evidence_containing_sets_can_be_persisted(temp_chats):
+    """
+    Regression: the answer was generated, shown, and then lost.
+
+    deduplicate() records `also_found_by` as a SET, and that evidence is stored
+    verbatim on the assistant message. json.dumps raises TypeError on a set, so
+    the write failed after the answer had already been rendered - leaving the
+    user's question in the transcript with no reply and a traceback in the log.
+    """
+    chat_id = chat_store.create_chat()
+    chat_store.append_message(
+        chat_id, "assistant", "the answer",
+        state={"reranked_results": [{"text": "x", "also_found_by": {"graph", "vector"}}]},
+    )
+
+    reloaded = chat_store.load_chat(chat_id)
+    assert reloaded is not None, "the chat must survive being written"
+    stored = reloaded["messages"][0]["state"]["reranked_results"][0]["also_found_by"]
+    assert sorted(stored) == ["graph", "vector"]

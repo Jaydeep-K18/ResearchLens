@@ -441,9 +441,22 @@ Stated plainly, because a portfolio project that claims no weaknesses is not cre
   day*; one evaluation run needs ~80. The harness pins a `-lite` model and aborts loudly
   rather than scoring failed calls — an earlier run silently reported "1.00 across every
   tier", which was 17 dead API calls wearing the costume of a finding.
-- **Scale is untested beyond ~8 papers.** NetworkX is in-memory; the 300-paper case in the
-  original design has not been run. Neo4j would be the move if it did not fit.
-- **No conversational memory.** Every question is independent; follow-ups are not resolved.
+- **Designed for ~50 documents, verified at a smaller scale.** Ingest is incremental and the
+  projections come from measured per-document costs, but a full 50-paper run has not been
+  executed end to end. The bottleneck is known: entity resolution is O(n²) in distinct entity
+  strings, and it is the one stage that cannot be made incremental, because canonicalisation
+  depends on corpus-wide frequency. NetworkX is in-memory; Neo4j would be the move past roughly
+  100k nodes.
+- **Follow-ups are resolved by an LLM rewrite, which can be wrong.** "How is it trained?" becomes
+  a standalone question before retrieval. When the rewrite misreads the referent, the answer is
+  confidently about the wrong thing. The resolved question is displayed for exactly this reason —
+  but it is a real failure mode that did not exist when every question was independent.
+- **Chats share one workspace, and there is only one.** No multiple corpora, no per-user
+  separation, no auth. Deleting the workspace is irreversible.
+- **Fast-path uploads produce a thinner graph.** Uploading extracts comparative and authorship
+  relations but not REBEL's taxonomic ones, so multi-hop reach is lower until the overnight
+  `--rebel` job runs. The sidebar says how many documents are in that state; it is a real
+  difference in capability, not just in edge count.
 
 ## Future work
 
