@@ -1,31 +1,39 @@
 """
-Phase 7, Step 7.1 - the Streamlit UI.
+The KG-RAG app: upload your own documents, then ask questions across all of them.
 
 Run me:  streamlit run src/app.py
 
-WHAT THIS IS FOR
-----------------
-Not "a chatbot". The interesting thing about this system is not that it answers
-questions - a 40-line script does that. It is that you can SEE the two retrieval
-paths disagree, watch the re-ranker reorder them, and read the multi-hop chain
-that produced an answer no single document contains.
+THE MODEL
+---------
+One WORKSPACE holds the PDFs you upload and the two memories built from them - a
+vector index for meaning and a knowledge graph for relationships. Inside that
+workspace you can keep many CHATS. Every chat searches the same documents, but
+each has its own conversation history, so a follow-up question is resolved
+against the chat it was asked in and nothing else.
 
-So the UI is built around showing the machinery, not hiding it:
+Deleting a chat costs you that conversation. Deleting the workspace deletes
+everything: PDFs, both memories, and every chat.
 
-  - every answer expands into the vector chunks, the graph evidence, and what
-    re-ranking did to the ordering
-  - a side-by-side toggle runs basic RAG and KG-RAG on the same question, which
-    is the single most convincing thing to demonstrate
-  - the graph tab is explorable, because a knowledge graph you cannot look at is
-    a claim rather than an artefact
-
-A NOTE ON PROCESSING UPLOADS
+WHY THE UI SHOWS ITS WORKING
 ----------------------------
-Full REBEL extraction runs at ~1.3 seconds per sentence on CPU, so a single
-20-page paper is several minutes and a browser tab is the wrong place for it.
-The upload flow therefore defaults to the fast dependency-parse extractor and
-offers REBEL as an explicit opt-in, with the honest warning attached. Large
-corpora belong in the command-line batch job.
+The interesting thing about this system is not that it answers questions - a
+40-line script does that. It is that you can see the two retrieval paths
+disagree, watch the re-ranker reorder them, and read the multi-hop chain behind
+an answer no single document contains. So every answer expands into the vector
+chunks, the graph evidence, and what re-ranking changed.
+
+A NOTE ON PROCESSING TIME
+-------------------------
+Uploading runs the FAST path: chunk, embed, and extract relations by dependency
+parsing. That is roughly two minutes for fifty papers.
+
+Full REBEL extraction is a different order of magnitude - about 1.3 seconds per
+sentence, so five to six hours for fifty papers. A browser tab is the wrong place
+for that, so it is a separate resumable command you run once, overnight:
+
+    python src/knowledge_extractor.py --rebel
+
+The graph works immediately after upload and gets richer after that job runs.
 """
 
 from __future__ import annotations
@@ -38,16 +46,16 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.utils import (  # noqa: E402
-    CHROMA_DIR,
+    EVAL_RESULTS_PATH,
     GRAPH_PATH,
     GRAPH_VIZ_PATH,
-    RAW_DIR,
-    TRIPLES_PATH,
     ensure_dirs,
 )
 
+MAX_UPLOAD_FILES = 50
+
 st.set_page_config(
-    page_title="KG-RAG - Knowledge Graph Augmented Retrieval",
+    page_title="KG-RAG",
     page_icon="🕸️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -55,7 +63,6 @@ st.set_page_config(
 
 CSS = """
 <style>
-  .stApp { }
   .evidence-card {
       border-left: 3px solid #4A9EFF; padding: 10px 14px; margin: 8px 0;
       background: rgba(74,158,255,.06); border-radius: 0 6px 6px 0;
@@ -72,6 +79,8 @@ CSS = """
   }
   .pill.vector { background: rgba(74,158,255,.18); color: #7ab8ff; }
   .pill.graph  { background: rgba(76,217,123,.18); color: #7fd1a0; }
+  .doc-row { font-size: .8rem; padding: 2px 0; }
+  .muted { color: #8a94a6; font-size: .78rem; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -100,13 +109,25 @@ def load_graph():
 
 @st.cache_resource(show_spinner="Loading retrieval pipeline ...")
 def load_pipeline():
+    """
+    The pipeline works with or without a graph.
+
+    A workspace can legitimately have documents embedded but no graph yet, and
+    the user should be able to ask questions in the meantime. Passing kg=None
+    degrades to vector-only retrieval instead of refusing to build.
+    """
     from src.hybrid_retriever import HybridRetriever
     from src.pipeline import KGRagPipeline
-    graph = load_graph()
-    if graph is None:
-        return None
-    retriever = HybridRetriever(store=load_store(), kg=graph)
+
+    retriever = HybridRetriever(store=load_store(), kg=load_graph())
     return KGRagPipeline(retriever=retriever)
+
+
+def clear_caches() -> None:
+    """Drop cached indexes after the corpus changes, so the next read is fresh."""
+    load_store.clear()
+    load_graph.clear()
+    load_pipeline.clear()
 
 
 def llm_status() -> tuple[bool, str]:
@@ -116,148 +137,223 @@ def llm_status() -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
+# Ingest
+# ---------------------------------------------------------------------------
+
+def process_uploads(uploads) -> None:
+    """
+    Save uploaded PDFs into the workspace and process only what is new.
+
+    Wrapped end to end: one malformed PDF among fifty must not abandon the batch
+    or leave the workspace half-written. Per-document failures are recorded in
+    the manifest and reported; the rest still complete.
+    """
+    from src import workspace
+    from src.knowledge_extractor import ingest_documents
+
+    if len(uploads) > MAX_UPLOAD_FILES:
+        st.sidebar.error(
+            f"{len(uploads)} files selected. This build handles up to "
+            f"{MAX_UPLOAD_FILES} at once - add them in batches."
+        )
+        return
+
+    new_ids: list[str] = []
+    skipped = 0
+    with st.status(f"Adding {len(uploads)} file(s) ...", expanded=True) as status:
+        for upload in uploads:
+            doc_id, is_new = workspace.add_document(upload.getbuffer().tobytes(), upload.name)
+            if is_new:
+                new_ids.append(doc_id)
+            else:
+                skipped += 1
+        if skipped:
+            status.write(f"Skipped {skipped} file(s) already in this workspace.")
+
+        if not new_ids:
+            status.update(label="Nothing new to process.", state="complete")
+            return
+
+        def report(index, total, filename, stage):
+            status.write(f"[{index}/{total}] {filename} - {stage}")
+
+        status.update(label=f"Processing {len(new_ids)} document(s) ...")
+        try:
+            summary = ingest_documents(new_ids, use_rebel=False, progress=report)
+        except Exception as exc:  # noqa: BLE001
+            status.update(label="Processing failed", state="error")
+            st.sidebar.error(f"Processing failed: {exc}")
+            return
+
+        status.write("Rebuilding knowledge graph ...")
+        try:
+            workspace.rebuild_graph()
+        except Exception as exc:  # noqa: BLE001
+            status.write(f"Graph rebuild failed: {exc}")
+
+        label = (f"Done - {summary['processed']} processed, "
+                 f"{summary['chunks']:,} chunks, {summary['triples']:,} relations")
+        if summary["failed"]:
+            label += f", {summary['failed']} failed"
+        status.update(label=label, state="complete")
+
+    clear_caches()
+    st.rerun()
+
+
+def reprocess_document(doc_id: str) -> None:
+    from src import workspace
+    from src.knowledge_extractor import ingest_documents
+
+    with st.spinner("Re-processing ..."):
+        ingest_documents([doc_id], use_rebel=False)
+        workspace.rebuild_graph()
+    clear_caches()
+    st.rerun()
+
+
+def remove_document(doc_id: str) -> None:
+    from src import workspace
+
+    with st.spinner("Removing ..."):
+        workspace.remove_document(doc_id, store=load_store())
+        workspace.rebuild_graph()
+    clear_caches()
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
-def render_sidebar() -> dict:
-    st.sidebar.title("KG-RAG")
-    st.sidebar.caption("Knowledge-graph augmented retrieval over research papers")
+def render_chat_list() -> str | None:
+    """Chat switcher. Returns the active chat id."""
+    from src import chat as chat_store
 
-    # ---- corpus status ----
-    store = load_store()
-    graph = load_graph()
-    pdfs = sorted(RAW_DIR.glob("*.pdf")) if RAW_DIR.exists() else []
+    st.sidebar.subheader("Chats")
 
-    st.sidebar.subheader("Index status")
-    col_a, col_b = st.sidebar.columns(2)
-    col_a.metric("PDFs", len(pdfs))
-    col_b.metric("Chunks", f"{store.count():,}")
+    chats = chat_store.list_chats()
+    if st.sidebar.button("New chat", width="stretch", type="primary"):
+        st.session_state.active_chat = chat_store.create_chat()
+        st.rerun()
 
-    if graph is not None:
-        stats = graph.stats()
-        col_c, col_d = st.sidebar.columns(2)
-        col_c.metric("Entities", f"{stats['nodes']:,}")
-        col_d.metric("Relations", f"{stats['edges']:,}")
-    else:
-        st.sidebar.warning("No knowledge graph yet. Build it with:\n\n"
-                           "`python src/knowledge_extractor.py`\n\n"
-                           "`python src/knowledge_graph.py --rebuild`")
+    if not chats:
+        st.sidebar.caption("No chats yet.")
+        return st.session_state.get("active_chat")
 
-    available, status = llm_status()
-    if available:
-        st.sidebar.success(f"LLM ready - {status}")
-    else:
-        st.sidebar.error("No LLM key. Retrieval works; answers need a key in `.env`.\n\n"
-                         "Get one free at aistudio.google.com/apikey")
+    ids = [c["chat_id"] for c in chats]
+    active = st.session_state.get("active_chat")
+    if active not in ids:
+        active = ids[0]
+        st.session_state.active_chat = active
 
-    st.sidebar.divider()
+    labels = {c["chat_id"]: (c["title"] or "Untitled")[:38] for c in chats}
+    chosen = st.sidebar.radio(
+        "Conversations", ids, index=ids.index(active),
+        format_func=lambda cid: labels.get(cid, cid), label_visibility="collapsed",
+    )
+    if chosen != active:
+        st.session_state.active_chat = chosen
+        st.rerun()
 
-    # ---- upload ----
-    st.sidebar.subheader("Add documents")
+    if st.sidebar.button("Delete this chat", width="stretch"):
+        chat_store.delete_chat(chosen)
+        st.session_state.pop("active_chat", None)
+        st.rerun()
+
+    return chosen
+
+
+def render_documents() -> None:
+    from src import workspace
+
+    st.sidebar.subheader("Documents")
+
     uploads = st.sidebar.file_uploader(
         "Upload PDFs", type=["pdf"], accept_multiple_files=True,
         label_visibility="collapsed",
     )
+    if uploads and st.sidebar.button("Process documents", type="primary", width="stretch"):
+        process_uploads(uploads)
 
-    run_rebel = st.sidebar.checkbox(
-        "Also run REBEL extraction", value=False,
-        help="REBEL adds richer relations but runs at ~1.3s per sentence on CPU - "
-             "several minutes per paper. Leave off for the fast dependency-parse "
-             "extractor; use the command-line batch job for large corpora.",
-    )
+    documents = workspace.load_manifest()
+    if not documents:
+        st.sidebar.caption("No documents yet.")
+        return
 
-    if uploads and st.sidebar.button("Process documents", type="primary",
-                                     width='stretch'):
-        process_uploads(uploads, run_rebel)
+    stats = workspace.workspace_stats()
+    a, b, c = st.sidebar.columns(3)
+    a.metric("Docs", stats["n_documents"])
+    b.metric("Chunks", f"{stats['n_chunks']:,}")
+    c.metric("Relations", f"{stats['n_triples']:,}")
 
-    st.sidebar.divider()
-
-    # ---- retrieval settings ----
-    st.sidebar.subheader("Retrieval settings")
-    settings = {
-        # Default 12, not 8: compound questions ("which models beat X, AND who
-        # proposed them") split one evidence budget across two sub-questions.
-        # At 8, correctly-retrieved author edges were verified in testing to
-        # rank 8-11 - just past the cutoff - so the pipeline reported "the
-        # evidence does not name the authors" with the answer one slot away.
-        "top_k": st.sidebar.slider("Results sent to the LLM", 3, 15, 12),
-        "vector_k": st.sidebar.slider("Vector candidates", 5, 25, 10),
-        "hops": st.sidebar.slider("Graph hops", 1, 3, 2,
-                                  help="How far to walk from the query entities. "
-                                       "3 hops finds more, and more noise."),
-        "compare": st.sidebar.toggle("Compare with basic RAG", value=False,
-                                     help="Run both systems side by side - the "
-                                          "clearest demonstration of what the graph adds."),
-    }
-    return settings
-
-
-def process_uploads(uploads, run_rebel: bool) -> None:
-    """Save uploaded PDFs and rebuild both indexes."""
-    ensure_dirs()
-    progress = st.sidebar.progress(0.0, text="Saving uploads ...")
-
-    saved: list[Path] = []
-    for upload in uploads:
-        destination = RAW_DIR / upload.name
-        destination.write_bytes(upload.getbuffer())
-        saved.append(destination)
-    progress.progress(0.15, text=f"Saved {len(saved)} PDFs. Extracting text ...")
-
-    from src.chunker import chunk_corpus
-    from src.ingestion import load_corpus
-
-    docs = load_corpus(clean=True)
-    progress.progress(0.35, text=f"{len(docs)} documents cleaned. Chunking ...")
-
-    chunks = chunk_corpus(docs, strategy="fixed")
-    progress.progress(0.45, text=f"{len(chunks)} chunks. Embedding (this takes a moment) ...")
-
-    store = load_store()
-    store.add_chunks(chunks, show_progress=False)
-    progress.progress(0.65, text="Vector store updated. Extracting relations ...")
-
-    from src.knowledge_extractor import extract_all, load_triples, save_triples
-
-    fresh = extract_all(use_rebel=run_rebel, use_domain=True, resume=False)
-
-    # MERGE, never overwrite.
-    #
-    # extract_all() returns only what it just ran. With REBEL off - the default,
-    # because it costs ~1.3s/sentence - that is ~390 domain+metadata triples.
-    # Writing those straight to triples.json would DELETE the ~7,000 REBEL
-    # triples already on disk, silently collapsing the graph from 6,833
-    # relations to a few hundred. The user would see "processed successfully"
-    # and a gutted knowledge graph.
-    #
-    # So: keep existing REBEL triples (still valid for the documents they came
-    # from), and let the freshly-extracted domain/metadata triples - which cover
-    # the whole corpus including the new uploads - replace their counterparts.
-    if run_rebel:
-        triples = fresh                      # REBEL re-ran over everything
-    else:
-        existing_rebel = [t for t in load_triples() if t.get("extractor") == "rebel"]
-        triples = existing_rebel + fresh
+    if stats["awaiting_rebel"]:
         st.sidebar.caption(
-            f"Kept {len(existing_rebel):,} existing REBEL relations. New PDFs have "
-            "dependency-parse relations only — tick the REBEL box (slow) for full extraction."
+            f"{stats['awaiting_rebel']} document(s) have fast-path relations only. "
+            "For the full taxonomic graph run `python src/knowledge_extractor.py --rebel` "
+            "(slow - about 1.3s per sentence)."
         )
 
-    save_triples(triples)
-    progress.progress(0.9, text=f"{len(triples)} triples. Building graph ...")
+    with st.sidebar.expander(f"Manage {len(documents)} document(s)"):
+        for record in documents.values():
+            failed = record.get("status") == "failed"
+            marker = "!" if failed else ""
+            st.markdown(
+                f"<div class='doc-row'><b>{marker}{record['filename'][:34]}</b><br>"
+                f"<span class='muted'>{record.get('n_chunks', 0)} chunks &middot; "
+                f"{record.get('n_triples', 0)} relations &middot; "
+                f"{', '.join(record.get('extractors_run', [])) or 'not processed'}</span></div>",
+                unsafe_allow_html=True,
+            )
+            if failed and record.get("error"):
+                st.caption(f"Error: {record['error'][:120]}")
+            left, right = st.columns(2)
+            if left.button("Remove", key=f"rm_{record['doc_id']}", width="stretch"):
+                remove_document(record["doc_id"])
+            if right.button("Redo", key=f"re_{record['doc_id']}", width="stretch"):
+                reprocess_document(record["doc_id"])
+            st.divider()
 
-    from src.knowledge_graph import KnowledgeGraph
 
-    graph = KnowledgeGraph.from_triples(triples, verbose=False)
-    graph.save()
-    progress.progress(1.0, text="Done.")
+def render_sidebar() -> tuple[str | None, dict]:
+    from src import workspace
 
-    # Drop the cached instances so the new indexes are picked up.
-    load_graph.clear()
-    load_pipeline.clear()
-    st.sidebar.success(f"Processed {len(docs)} documents, {len(chunks)} chunks, "
-                       f"{len(triples)} triples.")
-    st.rerun()
+    st.sidebar.title("KG-RAG")
+    st.sidebar.caption("Ask questions across your own documents")
+
+    active_chat = render_chat_list()
+    st.sidebar.divider()
+    render_documents()
+    st.sidebar.divider()
+
+    ready, status = llm_status()
+    if ready:
+        st.sidebar.success(f"LLM ready - {status}")
+    else:
+        st.sidebar.error("No LLM key. Retrieval works; answers need a key in `.env`.")
+
+    settings = {
+        "top_k": st.sidebar.slider("Results sent to the LLM", 3, 20, 12),
+        "vector_k": st.sidebar.slider("Vector candidates", 5, 25, 10),
+        "hops": st.sidebar.slider("Graph hops", 1, 3, 2,
+                                  help="How far to walk from the entities in your question. "
+                                       "3 hops finds more, and more noise."),
+    }
+
+    st.sidebar.divider()
+    with st.sidebar.expander("Danger zone"):
+        st.caption("Deletes every PDF, both memories, and all chats. "
+                   "Benchmark results are kept.")
+        if st.checkbox("I understand this cannot be undone"):
+            if st.button("Delete workspace", type="primary", width="stretch"):
+                from src import chat as chat_store
+                chat_store.delete_all_chats()
+                workspace.delete_workspace()
+                st.session_state.clear()
+                clear_caches()
+                st.rerun()
+
+    return active_chat, settings
 
 
 # ---------------------------------------------------------------------------
@@ -266,195 +362,162 @@ def process_uploads(uploads, run_rebel: bool) -> None:
 
 def render_evidence_item(item: dict, index: int) -> None:
     method = item["retrieval_method"]
-    citation = f"{item['source_file']} &middot; p.{item.get('page', '?')}"
-    text = " ".join(item["text"].split())
-
+    citation = f"{item['source_file']} &middot; p.{item['page']}"
     if method == "graph":
-        subject, relation, obj = item.get("triple", ("", "", ""))
         hops = item.get("hop_distance", 1)
+        subject, relation, obj = item.get("triple", ("", "", ""))
         st.markdown(
-            f"""<div class="evidence-card graph">
-            <span class="pill graph">GRAPH</span>
-            <span class="cite">{citation} &middot; {hops} hop{'s' if hops > 1 else ''}</span>
-            <div style="margin:6px 0"><b>{subject}</b> &mdash;[{relation}]&rarr; <b>{obj}</b></div>
-            <div class="chain">{item.get('path_str', '')}</div>
-            <div style="margin-top:8px;font-size:.88rem">{text}</div>
-            </div>""",
+            f"<div class='evidence-card graph'>"
+            f"<span class='pill graph'>GRAPH</span>"
+            f"<span class='cite'>{citation} &middot; {hops} hop{'s' if hops > 1 else ''}</span>"
+            f"<div class='chain'>{subject} —[{relation}]&rarr; {obj}</div>"
+            f"<div style='margin-top:6px'>{item['text'][:400]}</div></div>",
             unsafe_allow_html=True,
         )
     else:
-        section = item.get("section") or ""
-        section_label = f" &middot; {section}" if section else ""
         st.markdown(
-            f"""<div class="evidence-card">
-            <span class="pill vector">TEXT</span>
-            <span class="cite">{citation}{section_label}</span>
-            <div style="margin-top:8px;font-size:.88rem">{text}</div>
-            </div>""",
+            f"<div class='evidence-card'>"
+            f"<span class='pill vector'>TEXT</span>"
+            f"<span class='cite'>{citation}</span>"
+            f"<div style='margin-top:6px'>{item['text'][:400]}</div></div>",
             unsafe_allow_html=True,
         )
 
 
-def render_answer_tab(settings: dict) -> None:
-    pipeline = load_pipeline()
+def render_answer_details(state: dict) -> None:
+    """The expandable machinery behind one answer."""
+    reranked = state.get("reranked_results", []) or []
+    vector = state.get("vector_results", []) or []
+    graph = state.get("graph_results", []) or []
+    timings = state.get("timings", {}) or {}
 
-    st.title("Ask the corpus")
-    st.caption("Vector search finds text that resembles your question. "
-               "Graph traversal finds facts structurally connected to it. "
-               "Both run, then a cross-encoder decides what actually matters.")
-
-    if pipeline is None:
-        st.warning("The knowledge graph has not been built yet, so only vector "
-                   "search is available. Build it with `python src/knowledge_extractor.py` "
-                   "then `python src/knowledge_graph.py --rebuild`.")
-        return
-
-    examples = [
-        "Which models outperform Faster R-CNN, and who proposed them?",
-        "What is the self-attention mechanism?",
-        "Trace the architectural lineage from the Transformer to Swin Transformer.",
-        "Which authors of detection papers also worked on segmentation?",
-    ]
-    chosen = st.selectbox("Try an example, or write your own below", [""] + examples,
-                          format_func=lambda x: x or "-- pick an example --")
-
-    question = st.text_input("Your question", value=chosen,
-                             placeholder="e.g. Which models outperform YOLO?")
-
-    if not st.button("Ask", type="primary") or not question.strip():
-        return
-
-    if settings["compare"]:
-        render_comparison(question, settings)
-        return
-
-    pipeline.top_k = settings["top_k"]
-    pipeline.vector_k = settings["vector_k"]
-    pipeline.graph_hops = settings["hops"]
-
-    with st.spinner("Running vector search and graph traversal ..."):
-        started = time.time()
-        state = pipeline.run(question)
-        elapsed = time.time() - started
-
-    render_state(state, elapsed)
-
-
-def render_state(state: dict, elapsed: float) -> None:
-    reranked = state.get("reranked_results") or []
     methods = [item["retrieval_method"] for item in reranked]
-
-    if state.get("error"):
-        st.error(state["error"])
-    else:
-        st.markdown("### Answer")
-        st.markdown(state.get("answer") or "_no answer_")
-
     cols = st.columns(4)
-    cols[0].metric("Vector hits", len(state.get("vector_results") or []))
-    cols[1].metric("Graph evidence", len(state.get("graph_results") or []))
-    cols[2].metric("Graph in final mix", f"{methods.count('graph')}/{len(methods)}")
-    cols[3].metric("Time", f"{elapsed:.1f}s")
+    cols[0].metric("Vector hits", len(vector))
+    cols[1].metric("Graph evidence", len(graph))
+    cols[2].metric("Graph in final", f"{methods.count('graph')}/{len(reranked)}")
+    cols[3].metric("Time", f"{timings.get('total', 0):.1f}s")
 
-    sources = state.get("sources") or []
+    if state.get("resolved_query") and state["resolved_query"] != state.get("original_query"):
+        st.caption(f"Searched for: *{state['resolved_query']}*")
+
+    sources = state.get("sources", []) or []
     if sources:
-        st.markdown("**Sources cited:** " + " &nbsp;|&nbsp; ".join(
-            f"`{s['source_file']} p.{s['page']}`" for s in sources
-        ))
+        st.caption("Sources: " + "  |  ".join(
+            f"{s['source_file']} p.{s['page']}" for s in sources))
 
-    st.divider()
-
-    with st.expander(f"Final evidence sent to the model ({len(reranked)} items, "
-                     f"after re-ranking)", expanded=False):
-        st.caption("This is exactly what the LLM saw. Everything in the answer "
+    with st.expander(f"Evidence sent to the model ({len(reranked)} items)"):
+        st.caption("This is exactly what the model saw. Everything in the answer "
                    "should be traceable to one of these.")
         for index, item in enumerate(reranked):
             render_evidence_item(item, index)
 
-    with st.expander(f"Vector search results ({len(state.get('vector_results') or [])})"):
-        st.caption("Chunks whose embedding is closest to the question's embedding. "
-                   "Note that these are the NEAREST chunks, which is not the same "
-                   "as relevant ones.")
-        for item in state.get("vector_results") or []:
-            st.markdown(f"**{item['score']:.3f}** &middot; `{item['source_file']} "
-                        f"p.{item['page']}`")
-            st.caption(" ".join(item["text"].split())[:320])
-
-    graph_results = state.get("graph_results") or []
-    with st.expander(f"Graph evidence ({len(graph_results)})"):
-        st.caption("Relationships reached by walking out from entities named in "
-                   "your question. Multi-hop chains are facts no single paper states.")
-        if not graph_results:
-            st.info("No graph evidence - the question may not name an entity that "
-                    "exists in the graph.")
-        for item in graph_results:
-            subject, relation, obj = item.get("triple", ("", "", ""))
-            st.markdown(f"**{subject}** &mdash;[{relation}]&rarr; **{obj}** "
-                        f"&nbsp; `{item['hop_distance']} hop` "
-                        f"&nbsp; `{item['source_file']} p.{item['page']}`")
-            st.caption(item.get("path_str", ""))
-
-    with st.expander("What re-ranking changed"):
-        st.caption("The cross-encoder reads the question and each passage TOGETHER, "
-                   "which is more accurate than comparing two separately-computed "
-                   "embeddings. Rows that moved up were under-ranked by the first pass.")
-        rows = []
-        for item in reranked:
-            was = item.get("merged_rank", 0)
-            now = item.get("final_rank", 0)
-            rows.append({
-                "final": now, "was": was, "move": was - now,
-                "method": item["retrieval_method"],
-                "ce score": round(item.get("rerank_score", 0), 3),
-                "source": f"{item['source_file']} p.{item.get('page')}",
-            })
-        if rows:
-            st.dataframe(rows, width='stretch', hide_index=True)
+    if graph:
+        with st.expander(f"All graph evidence ({len(graph)})"):
+            st.caption("Relationships reached by walking out from entities named in "
+                       "your question. Multi-hop chains are facts no single document states.")
+            for index, item in enumerate(graph):
+                render_evidence_item(item, index)
 
 
-def render_comparison(question: str, settings: dict) -> None:
-    from src.basic_rag import answer_question
+# ---------------------------------------------------------------------------
+# Chat tab
+# ---------------------------------------------------------------------------
+
+def render_onboarding() -> None:
+    st.header("Upload documents to get started")
+    st.markdown(
+        "This system builds **two memories** of the documents you upload:\n\n"
+        "- a **vector index**, which finds passages that resemble your question\n"
+        "- a **knowledge graph**, which follows relationships *across* documents\n\n"
+        "That second memory is what lets it answer questions whose answer is in "
+        "no single document — like *“which method outperforms X, and who wrote it?”*, "
+        "where the two facts live in different papers and the connection lives in neither.\n\n"
+        "**Use the sidebar to upload PDFs.** Up to "
+        f"{MAX_UPLOAD_FILES} at a time; roughly two minutes for fifty papers."
+    )
+    st.info(
+        "No sample documents are included — this is your workspace. If you want a "
+        "corpus to try it on, `python scripts/fetch_papers.py` downloads eight "
+        "open-access papers that cite and benchmark against each other.",
+        icon="💡",
+    )
+
+
+def render_chat_tab(active_chat: str | None, settings: dict) -> None:
+    from src import chat as chat_store
+    from src import workspace
+
+    if workspace.is_empty():
+        render_onboarding()
+        return
+
+    if active_chat is None:
+        active_chat = chat_store.create_chat()
+        st.session_state.active_chat = active_chat
+        st.rerun()
+
+    chat = chat_store.load_chat(active_chat)
+    if chat is None:
+        st.session_state.pop("active_chat", None)
+        st.rerun()
+        return
+
+    if load_graph() is None:
+        st.warning(
+            "No knowledge graph yet — answering with vector search only. "
+            "Upload documents or re-process to build the graph.",
+            icon="⚠️",
+        )
+
+    for message in chat["messages"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message["role"] == "assistant" and message.get("state"):
+                render_answer_details(message["state"])
+
+    question = st.chat_input("Ask anything about your documents")
+    if not question:
+        return
+
+    chat_store.append_message(active_chat, "user", question)
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    # History EXCLUDING the question just asked - it is the thing being resolved,
+    # not context for resolving itself.
+    history = chat_store.history_for_condense(active_chat)[:-1]
 
     pipeline = load_pipeline()
-    store = load_store()
+    pipeline.top_k = settings["top_k"]
+    pipeline.vector_k = settings["vector_k"]
+    pipeline.graph_hops = settings["hops"]
 
-    left, right = st.columns(2)
+    with st.chat_message("assistant"):
+        with st.spinner("Searching both memories ..."):
+            try:
+                state = pipeline.run(question, history=history or None)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not answer: {exc}")
+                return
 
-    with left:
-        st.markdown("### Basic RAG")
-        st.caption("Vector search only - the generic approach.")
-        with st.spinner("Running basic RAG ..."):
-            basic = answer_question(question, store, top_k=5, show_chunks=False)
-        if basic.get("error"):
-            st.error(basic["error"])
-        else:
-            st.markdown(basic["answer"])
-        with st.expander(f"{len(basic.get('chunks', []))} chunks retrieved"):
-            for chunk in basic.get("chunks", []):
-                st.markdown(f"**{chunk['score']:.3f}** `{chunk['source_file']} "
-                            f"p.{chunk['page']}`")
-                st.caption(" ".join(chunk["text"].split())[:260])
+        answer = state.get("answer") or state.get("error") or "No answer produced."
+        st.markdown(answer)
+        render_answer_details(state)
 
-    with right:
-        st.markdown("### KG-RAG")
-        st.caption("Vector search + graph traversal + cross-encoder re-ranking.")
-        pipeline.top_k = settings["top_k"]
-        pipeline.graph_hops = settings["hops"]
-        with st.spinner("Running KG-RAG ..."):
-            state = pipeline.run(question)
-        if state.get("error"):
-            st.error(state["error"])
-        else:
-            st.markdown(state.get("answer") or "_no answer_")
-
-        reranked = state.get("reranked_results") or []
-        graph_count = sum(1 for r in reranked if r["retrieval_method"] == "graph")
-        st.caption(f"{graph_count} of {len(reranked)} final evidence items came "
-                   f"from graph traversal.")
-        with st.expander("Graph chains used"):
-            for item in reranked:
-                if item["retrieval_method"] == "graph":
-                    st.markdown(f"`{item.get('path_str', '')}`")
+    chat_store.append_message(
+        active_chat, "assistant", answer,
+        state={
+            "reranked_results": state.get("reranked_results", []),
+            "vector_results": state.get("vector_results", []),
+            "graph_results": state.get("graph_results", []),
+            "sources": state.get("sources", []),
+            "timings": state.get("timings", {}),
+            "original_query": state.get("original_query", question),
+            "resolved_query": state.get("resolved_query", question),
+        },
+    )
+    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -462,119 +525,75 @@ def render_comparison(question: str, settings: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def render_graph_tab() -> None:
-    import streamlit.components.v1 as components
-
-    from src.graph_viz import build_visualisation, infer_entity_type
+    from src.knowledge_graph import format_path
 
     graph = load_graph()
-    st.title("Knowledge graph")
-
     if graph is None:
-        st.warning("No graph built yet.")
+        st.info("No knowledge graph yet. Upload documents to build one.")
         return
 
     stats = graph.stats()
-    st.caption(f"{stats['nodes']:,} entities and {stats['edges']:,} relations extracted "
-               f"from the corpus. Nodes are coloured by a type inferred from the "
-               f"relations they participate in, and sized by how connected they are.")
+    st.caption(f"{stats['nodes']:,} entities and {stats['edges']:,} relations "
+               "extracted from your documents.")
 
-    controls = st.columns([3, 1, 1])
-    hub_names = [graph.display_name(node) for node, _ in stats["top_nodes"][:40]]
-    entity = controls[0].selectbox("Centre the view on an entity", hub_names)
+    # Centre options come from the user's OWN graph, not a hardcoded list of
+    # sample-corpus entities. top_nodes is (node_key, degree) sorted by degree.
+    top_nodes = [graph.display_name(key) for key, _ in stats.get("top_nodes", [])[:40]]
+
+    controls = st.columns([2, 1, 1])
+    centre = controls[0].selectbox("Centre the view on an entity", top_nodes) if top_nodes else None
     hops = controls[1].slider("Hops", 1, 3, 2)
     max_nodes = controls[2].slider("Max nodes", 20, 150, 70)
 
-    if st.button("Render graph", type="primary"):
-        with st.spinner("Laying out the graph ..."):
-            path = build_visualisation(graph, entity=entity, hops=hops,
-                                       max_nodes=max_nodes, output=GRAPH_VIZ_PATH,
-                                       height="720px")
-        components.html(path.read_text(encoding="utf-8"), height=740, scrolling=False)
+    if centre and st.button("Render graph"):
+        from src.graph_viz import build_visualisation
+        with st.spinner("Building visualisation ..."):
+            build_visualisation(graph, centre, hops=hops, max_nodes=max_nodes)
+        st.components.v1.html(GRAPH_VIZ_PATH.read_text(encoding="utf-8"), height=620)
 
     st.divider()
-
-    # ---- entity inspector ----
-    st.subheader("Look up an entity")
-    query = st.text_input("Entity name", placeholder="e.g. DETR, ResNet, COCO")
-    if query:
-        node = graph.find_entity(query)
-        if node is None:
-            st.warning(f"No entity matching {query!r}. Try a different spelling.")
-        else:
-            data = graph.graph.nodes[node]
-            st.markdown(f"### {data.get('name', node)}")
-            info = st.columns(3)
-            info[0].metric("Connections", graph.graph.degree(node))
-            info[1].metric("Mentions", data.get("mentions", 0))
-            info[2].metric("Type", infer_entity_type(graph, node))
-
-            aliases = sorted(data.get("aliases", ()))
-            if aliases:
-                st.caption("Also written as: " + ", ".join(f"`{a}`" for a in aliases[:12]))
-            sources = sorted(data.get("sources", ()))
-            if sources:
-                st.caption("Appears in: " + ", ".join(f"`{s}`" for s in sources))
-
-            outgoing = [(t, d["relation"]) for _s, t, d in graph.graph.out_edges(node, data=True)]
-            incoming = [(s, d["relation"]) for s, _t, d in graph.graph.in_edges(node, data=True)]
-
-            left, right = st.columns(2)
-            with left:
-                st.markdown("**Outgoing**")
-                for target, relation in sorted(set(outgoing))[:25]:
-                    st.markdown(f"&mdash;[{relation}]&rarr; {graph.display_name(target)}")
-            with right:
-                st.markdown("**Incoming**")
-                for source, relation in sorted(set(incoming))[:25]:
-                    st.markdown(f"{graph.display_name(source)} &mdash;[{relation}]&rarr;")
-
-    st.divider()
-
-    # ---- path finder: the multi-hop demo ----
     st.subheader("Find a connection between two entities")
     st.caption("This is the capability vector search structurally cannot provide: "
                "a chain of relationships linking two things no single document "
                "discusses together.")
-    path_cols = st.columns([2, 2, 1])
-    start = path_cols[0].text_input("From", placeholder="DETR")
-    end = path_cols[1].text_input("To", placeholder="instance segmentation")
-    if path_cols[2].button("Find path") and start and end:
-        from src.knowledge_graph import format_path
-        path = graph.find_path(start, end)
+    left, right, button = st.columns([2, 2, 1])
+    source = left.text_input("From")
+    target = right.text_input("To")
+    if button.button("Find path") and source and target:
+        path = graph.find_path(source, target)
         if not path:
-            st.warning("No path found within the hop limit.")
+            st.warning("No path found between those entities.")
         else:
-            st.success(f"Connected in {len(path)} hop{'s' if len(path) > 1 else ''}")
-            st.code(format_path(graph, path), language=None)
+            st.success(f"Connected in {len(path)} hop(s)")
+            st.code(format_path(graph, path))
             for step in path:
-                st.markdown(f"- **{graph.display_name(step['from'])}** "
-                            f"&mdash;[{step['relation']}]&rarr; "
-                            f"**{graph.display_name(step['to'])}** "
-                            f"&nbsp;`{step['source_file']} p.{step['page']}`")
-                if step.get("sentence"):
-                    st.caption(f"\"{step['sentence'][:250]}\"")
+                st.caption(f"{step['source_file']} p.{step['page']}")
+                st.markdown(f"> {step['sentence']}")
 
 
 # ---------------------------------------------------------------------------
-# Evaluation tab
+# Benchmark tab (developer-facing, kept out of the main workflow)
 # ---------------------------------------------------------------------------
 
-def render_eval_tab() -> None:
+def render_benchmark_tab() -> None:
     import json
 
-    from src.utils import EVAL_RESULTS_PATH
-
-    st.title("Evaluation")
-    st.caption("Twenty questions in three difficulty tiers, run through both "
-               "systems and scored by an LLM judge against hand-written reference "
-               "answers.")
+    st.caption(
+        "An optional developer benchmark, not part of using the app. It scores this "
+        "system against plain vector-only RAG on a fixed set of questions written for "
+        "the eight-paper demo corpus — so these numbers describe that corpus, not the "
+        "documents you have uploaded."
+    )
 
     if not EVAL_RESULTS_PATH.exists():
-        st.info("No results yet. Run `python src/evaluate.py` to generate them.")
+        st.info(
+            "No benchmark results. To reproduce them:\n\n"
+            "```\npython scripts/fetch_papers.py\npython src/evaluate.py\n```"
+        )
         return
 
     data = json.loads(EVAL_RESULTS_PATH.read_text(encoding="utf-8"))
-    summary = data["summary"]
+    summary = data.get("summary", {})
 
     rows = []
     for tier in ("simple", "medium", "hard", "ALL"):
@@ -582,58 +601,56 @@ def render_eval_tab() -> None:
             continue
         entry = summary[tier]
         rows.append({
-            "tier": tier, "n": entry["n"],
-            "basic RAG": entry["basic_rag"]["overall"],
-            "KG-RAG": entry["kg_rag"]["overall"],
-            "delta": entry["delta_overall"],
-            "graph share": f"{entry['graph_share']:.0%}",
+            "Tier": tier,
+            "n": entry["n"],
+            "Basic RAG": round(entry["basic_rag"]["overall"], 2),
+            "KG-RAG": round(entry["kg_rag"]["overall"], 2),
+            "Delta": round(entry["delta_overall"], 2),
+            "Graph share": f"{entry['graph_share']:.0%}",
         })
-    st.dataframe(rows, width='stretch', hide_index=True)
+    if rows:
+        st.dataframe(rows, width="stretch", hide_index=True)
 
-    st.markdown("A near-zero delta on **simple** questions is the correct result - "
-                "it means adding the graph did not damage what already worked. "
-                "The **hard** tier is where the graph has to earn its place.")
-
-    st.divider()
-    st.subheader("Per-question results")
-    for record in data["results"]:
-        basic = record["basic_rag"]["scores"]
-        kgrag = record["kg_rag"]["scores"]
-        header = (f"[{record['difficulty']}] {record['question'][:80]} "
-                  f"- basic {basic['correctness']}/5 vs KG-RAG {kgrag['correctness']}/5")
-        with st.expander(header):
-            st.markdown("**Reference answer**")
-            st.caption(record["expected"])
-            left, right = st.columns(2)
-            with left:
-                st.markdown("**Basic RAG**")
-                st.caption(f"correctness {basic['correctness']} &middot; completeness "
-                           f"{basic['completeness']} &middot; citations "
-                           f"{basic['citation_accuracy']}")
-                st.markdown(record["basic_rag"]["answer"] or "_none_")
-            with right:
-                st.markdown("**KG-RAG**")
-                st.caption(f"correctness {kgrag['correctness']} &middot; completeness "
-                           f"{kgrag['completeness']} &middot; citations "
-                           f"{kgrag['citation_accuracy']}")
-                st.markdown(record["kg_rag"]["answer"] or "_none_")
+    with st.expander("Per-question results"):
+        for record in data.get("results", []):
+            basic = record["basic_rag"]["scores"]
+            kgrag = record["kg_rag"]["scores"]
+            header = (f"[{record['difficulty']}] {record['question'][:80]} "
+                      f"- basic {basic['correctness']}/5 vs KG-RAG {kgrag['correctness']}/5")
+            with st.expander(header):
+                st.markdown("**Reference answer**")
+                st.caption(record["expected"])
+                left, right = st.columns(2)
+                with left:
+                    st.markdown("**Basic RAG**")
+                    st.markdown(record["basic_rag"]["answer"] or "_none_")
+                with right:
+                    st.markdown("**KG-RAG**")
+                    st.markdown(record["kg_rag"]["answer"] or "_none_")
 
 
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     ensure_dirs()
-    settings = render_sidebar()
 
-    ask_tab, graph_tab, eval_tab = st.tabs(
-        ["Ask", "Knowledge graph", "Evaluation"]
+    from src import workspace
+    # Pick up PDFs a user dropped into the folder by hand, so the manifest and
+    # the filesystem cannot silently disagree about what the corpus contains.
+    workspace.adopt_existing_pdfs()
+
+    active_chat, settings = render_sidebar()
+
+    chat_tab, graph_tab, benchmark_tab = st.tabs(
+        ["Chat", "Knowledge graph", "Benchmark"]
     )
-    with ask_tab:
-        render_answer_tab(settings)
+    with chat_tab:
+        render_chat_tab(active_chat, settings)
     with graph_tab:
         render_graph_tab()
-    with eval_tab:
-        render_eval_tab()
+    with benchmark_tab:
+        render_benchmark_tab()
 
 
-main()
+if __name__ == "__main__":
+    main()

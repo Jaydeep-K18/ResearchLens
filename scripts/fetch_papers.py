@@ -1,5 +1,14 @@
 """
-Download a small, deliberately INTERCONNECTED corpus of CV/ML papers from arXiv.
+OPTIONAL demo corpus. Nothing in the app depends on this script.
+
+The system is built for documents YOU upload - there is no preloaded data, and a
+fresh workspace is empty by design. This script exists for two narrower reasons:
+someone evaluating the repo who wants a working corpus in one command, and
+reproducing the committed benchmark results in data/eval_results*.json, which
+were measured on exactly these eight papers.
+
+Downloads into the workspace and registers each paper in the manifest, so the
+result is indistinguishable from having uploaded them through the UI.
 
 Why these eight papers specifically?
 --------------------------------------
@@ -28,7 +37,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.utils import RAW_DIR  # noqa: E402
 
 # arxiv_id -> human-readable filename. The filename matters: it becomes the
 # citation string the LLM prints in Phase 6 ("[Source: detr.pdf, p.4]"), so we
@@ -80,7 +92,10 @@ def download_paper(arxiv_id: str, filename: str, dest_dir: Path) -> bool:
 
 
 def main() -> None:
+    from src import workspace
+
     RAW_DIR.mkdir(parents=True, exist_ok=True)
+    print("OPTIONAL demo corpus - the app is built for documents you upload yourself.\n")
     print(f"Downloading {len(PAPERS)} papers into {RAW_DIR}\n")
 
     downloaded = 0
@@ -91,9 +106,16 @@ def main() -> None:
             if index < len(PAPERS) - 1:
                 time.sleep(DELAY_SECONDS)
 
+    # Register them in the manifest, so downloading is equivalent to uploading
+    # through the UI rather than a second, parallel way for documents to exist.
+    adopted = workspace.adopt_existing_pdfs()
+
     present = sorted(RAW_DIR.glob("*.pdf"))
     total_mb = sum(p.stat().st_size for p in present) / 1e6
-    print(f"\nDone. {downloaded} newly downloaded, {len(present)} PDFs now in data/raw/ ({total_mb:.1f} MB total)")
+    print(f"\nDone. {downloaded} newly downloaded, {len(present)} PDFs in the workspace "
+          f"({total_mb:.1f} MB), {adopted} registered.")
+    print("\nNow build the indexes - either open the app and press 'Process documents',")
+    print("or run:  python src/knowledge_extractor.py --rebel   (full extraction, slow)")
 
 
 if __name__ == "__main__":

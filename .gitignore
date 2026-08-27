@@ -10,6 +10,11 @@ venv/
 .env
 
 # Data: raw PDFs and generated artifacts are large / reproducible
+# The workspace is the user's own data: uploaded PDFs, both memories, and their
+# chat history. Never committed.
+data/workspace/
+
+# Legacy layout, kept ignored so an existing checkout does not suddenly stage it.
 data/raw/
 data/chroma_db/
 data/processed/

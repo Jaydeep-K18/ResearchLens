@@ -1,11 +1,14 @@
 # KG-RAG — Knowledge-Graph-Augmented Retrieval over Research Papers
 
-**Standard RAG can search a corpus. It cannot reason across it.** This system builds two
-parallel memories of a paper collection — a vector index for meaning and a knowledge graph
-for relationships — and walks the graph to answer questions whose answers exist in no single
+**Upload your own research papers. Ask questions across all of them at once.**
+
+Standard RAG can search a corpus. It cannot reason *across* it. This system builds two parallel
+memories of the documents you upload — a vector index for meaning and a knowledge graph for
+relationships — and walks the graph to answer questions whose answers exist in no single
 document.
 
-Runs entirely on CPU. No GPU anywhere.
+No preloaded data: the workspace starts empty and you fill it. Runs entirely on CPU, no GPU
+anywhere.
 
 ---
 
@@ -53,7 +56,7 @@ Two independent memories, built once, searched together.
 
 ```mermaid
 flowchart TD
-    PDF[PDFs in data/raw/]
+    PDF[PDFs you upload]
 
     PDF --> ING[ingestion.py<br/>column-aware extraction<br/>+ cleaning]
 
@@ -65,7 +68,7 @@ flowchart TD
 
     SENT --> REB[REBEL<br/>Wikidata relations]
     SENT --> DOM[dependency parser<br/>outperforms / trained_on / ...]
-    REB --> TR[triples.json]
+    REB --> TR[per-document triples]
     DOM --> TR
     TR --> KG[(NetworkX MultiDiGraph<br/>MEMORY 2: relationships)]
 
@@ -116,6 +119,17 @@ running as parallel branches that join at the re-ranker.
    retrieved, and is instructed to distinguish what a paper **states** from what the graph
    **connects**, to cite everything, and to say plainly when the evidence is insufficient.
 
+**Processing is incremental.** A manifest records what has been done to each document, keyed by
+content hash, so adding one paper to a corpus of forty processes one paper. The one stage that
+stays whole-corpus is the graph build — entity resolution canonicalises toward the most frequent
+surface form *across* the corpus, so adding a document can legitimately change an existing
+entity's canonical name. That is genuine whole-corpus dependence, not an implementation shortcut.
+
+**Follow-ups are resolved before retrieval.** Retrieval is stateless: *"how is it trained?"*
+embeds to nothing useful and names no entity. So within a chat, a follow-up is first rewritten
+into a standalone question using that chat's history. Both forms are kept and the resolved one
+is shown in the UI — a bad rewrite would otherwise look like a retrieval bug.
+
 ---
 
 ## Two findings worth reading before you trust the design
@@ -142,10 +156,15 @@ to order them.
 
 ---
 
-## Results
+## Results (optional benchmark)
 
-Twenty questions written against the eight-paper corpus, in three tiers, run through **both**
-systems and scored 1–5 by an LLM judge against hand-written reference answers.
+> This is a **developer benchmark, not part of using the app.** It measures the system against
+> plain vector-only RAG on a fixed question set written for the optional eight-paper demo corpus.
+> The numbers describe *that* corpus — not whatever documents you upload. Reproduce with
+> `python scripts/fetch_papers.py` first.
+
+Twenty questions in three tiers, run through **both** systems and scored 1–5 by an LLM judge
+against hand-written reference answers.
 
 ```bash
 python src/evaluate.py
@@ -271,45 +290,93 @@ cp .env.example .env       # then edit .env and paste your key
 ```
 
 Get a free one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-**Retrieval (Phases 1–5) works with no key at all** — only answer generation needs it.
+**Retrieval works with no key at all** — only answer generation needs it.
 
-Get the test corpus (eight open-access arXiv papers, chosen because they cite and benchmark
-against each other, which is what makes the graph interesting):
-
-```bash
-python scripts/fetch_papers.py
-```
-
-Build both memories:
-
-```bash
-python src/vector_store.py                      # ~1 min  - chunks + embeddings
-python src/knowledge_extractor.py               # ~50 min - REBEL over the corpus
-python src/knowledge_graph.py --rebuild         # ~10 s   - graph from triples
-python src/graph_viz.py                         # interactive HTML
-```
-
-The extraction step is the slow one and is checkpointed every ~250 sentences, so it can be
-interrupted and resumed. For a large corpus, run it overnight. To skip it while exploring, use
-`--no-rebel` for the fast dependency-parse extractor only.
-
-Then:
+Then start the app:
 
 ```bash
 streamlit run src/app.py
 ```
 
+**There is no preloaded data.** The workspace starts empty; upload your own PDFs in the sidebar.
+
+---
+
+## How you actually use it
+
+### The workspace and chats
+
+One **workspace** holds your uploaded PDFs and the two memories built from them. Inside it you
+can keep many **chats**. Every chat searches the same documents, but each keeps its own
+conversation history — so a follow-up like *"how is it trained?"* is resolved against the chat
+you asked it in, and nothing else.
+
+Deleting a chat costs you that conversation. Deleting the workspace deletes everything: PDFs,
+both memories, and every chat.
+
+### Uploading
+
+Drop up to 50 PDFs into the sidebar and press **Process documents**. Only documents you have
+not already added are processed — re-uploading the same file is a no-op, and adding one paper to
+a corpus of forty processes one paper, not forty-one.
+
+Documents are identified by content hash, so two different papers that happen to share a
+filename are stored separately rather than overwriting each other. That matters because the
+filename becomes the citation string the model prints.
+
+### The two-speed extraction trade-off
+
+This is the one thing worth understanding before you use it at scale.
+
+| | Fast path (on upload) | Full extraction (`--rebel`) |
+|---|---|---|
+| What it extracts | `outperforms`, `trained_on`, `achieves`, authorship | + `subclass of`, `part of`, `use` |
+| 50 papers | **~2 minutes** | **~5–6 hours** |
+| Where it runs | in the app | command line |
+
+Uploading runs the fast path only, so the workspace is queryable within minutes. REBEL adds the
+taxonomic relations that connect the graph into one traversable component — worth having, but
+not worth blocking a browser tab for hours. Run it once, overnight:
+
+```bash
+python src/knowledge_extractor.py --rebel
+```
+
+It processes one document at a time and records progress after each, so it is safe to interrupt
+and resume — and adding new PDFs later only queues *those*.
+
+### Optional: a demo corpus
+
+If you want something to try it on immediately, this downloads eight open-access arXiv papers
+chosen because they cite and benchmark against each other (which is what makes the graph
+interesting). It is not required, and nothing in the app depends on it:
+
+```bash
+python scripts/fetch_papers.py
+```
+
+These same eight papers are the corpus the committed benchmark results describe.
+
 ---
 
 ## Try it
 
+The app is the main way in. These CLI entry points work against whatever is in your workspace,
+and are useful for inspecting one stage at a time:
+
 ```bash
-python src/pipeline.py -i                                   # interactive KG-RAG
-python src/basic_rag.py --demo-limitation                   # watch vector-only RAG fail
-python src/graph_retriever.py -q "Which models outperform YOLO?"
-python src/knowledge_graph.py --path DETR "instance segmentation"
-python src/hybrid_retriever.py -q "Who proposed Faster R-CNN?"
-python src/evaluate.py                                      # the numbers
+python src/workspace.py                     # what is loaded, and what still needs REBEL
+python src/pipeline.py -i                   # ask questions without the UI
+python src/graph_retriever.py -q "your question here"    # graph walk only, no LLM needed
+python src/knowledge_graph.py --path "entity A" "entity B"
+python src/knowledge_extractor.py --rebel   # the overnight extraction job
+```
+
+Two demos that need the optional eight-paper corpus, because they name specific papers:
+
+```bash
+python src/basic_rag.py --demo-limitation   # watch vector-only RAG fail on a multi-hop question
+python src/evaluate.py                      # the benchmark
 ```
 
 The learning scripts, in order:
@@ -328,7 +395,7 @@ python notebooks/03_langgraph_intro.py    # state, nodes, edges, parallel branch
 pytest tests/ -q
 ```
 
-123 tests, no API key required. Several encode real bugs found during development, so they
+150 tests, no API key required. Several encode real bugs found during development, so they
 cannot come back:
 
 - the semantic chunker turning 56K characters of Mask R-CNN into 516K of chunks, because
@@ -406,10 +473,12 @@ src/
   hybrid_retriever.py    merge + cross-encoder re-rank  Phase 5
   pipeline.py            LangGraph orchestration        Phase 6
   evaluate.py            20-question harness            Phase 7
-  app.py                 Streamlit UI                   Phase 7
+  app.py                 Streamlit UI: chat + docs      Phase 7
+  workspace.py           manifest, incremental ingest
+  chat.py                many chats over one workspace
 notebooks/               three explanatory scripts
-tests/                   123 tests
-scripts/fetch_papers.py  reproducible arXiv corpus
+tests/                   150 tests
+scripts/fetch_papers.py  OPTIONAL demo corpus
 ```
 
 ---

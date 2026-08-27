@@ -1,0 +1,10 @@
+# Streamlit defaults are 200MB per file AND 200MB per websocket message, which a
+# 50-PDF batch can sit right on top of. Research PDFs are rarely over ~20MB, so
+# capping per-file is both safer and a clearer error than a silent disconnect
+# midway through an upload.
+[server]
+maxUploadSize = 50
+maxMessageSize = 300
+
+[browser]
+gatherUsageStats = false

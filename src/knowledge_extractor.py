@@ -144,6 +144,15 @@ _AFFILIATION_WORDS = {
     "brain", "ai", "intelligence", "science", "sciences", "center", "centre",
     "academy", "corp", "team", "group", "berkeley", "stanford", "mit", "toronto",
     "equal", "contribution", "correspondence", "author", "work", "done",
+    # Field-neutral institution vocabulary. Unlike subject terminology, the words
+    # organisations are named with are stable across disciplines, so this list
+    # generalises where a domain blocklist cannot: it catches "National Bureau"
+    # (economics), "Max Planck" (physics), "General Hospital" (medicine) without
+    # knowing anything about those fields.
+    "bureau", "national", "international", "european", "federal", "state",
+    "foundation", "association", "society", "ministry", "hospital", "clinic",
+    "agency", "council", "consortium", "trust", "partnership", "division",
+    "faculty", "campus", "planck", "cnrs", "inria", "cern", "nasa", "nih",
 }
 
 # Ordinary English words that the "Capitalised Capitalised" pattern happily
@@ -173,6 +182,23 @@ _NON_NAME_WORDS = {
 }
 
 
+def _looks_like_body_phrase(candidate: str, body: str) -> bool:
+    """
+    True if this "name" is really a phrase from the document's prose.
+
+    The structural signal that makes author extraction domain-neutral. The
+    pattern that finds names - Capitalised word, Capitalised word - also matches
+    "Gene Expression", "Monetary Policy", "Nash Equilibrium", "Random Forest".
+    Blocklisting them does not scale: the existing list is essentially the titles
+    of the eight demo papers, and would need rewriting for every new field.
+
+    A real author name appears once or twice on page one and then rarely again.
+    A technical phrase recurs throughout the body. Counting occurrences
+    distinguishes them without knowing anything about the subject.
+    """
+    return body.count(candidate) >= 3
+
+
 def extract_paper_metadata(doc: dict, max_authors: int = 12) -> tuple[str, list[str]]:
     """
     Read a paper's title and author list from its first page.
@@ -180,6 +206,11 @@ def extract_paper_metadata(doc: dict, max_authors: int = 12) -> tuple[str, list[
     Returns (title, authors). Either may be empty if the layout defeats us -
     this is a best-effort heuristic over the one region of a paper that is
     reliably formatted the same way across arXiv preprints.
+
+    False authors are worse than missing ones here: each becomes a graph node
+    with `authored` edges into the paper, poisoning exactly the multi-hop author
+    chains this system exists to answer. So the filters below err toward
+    rejecting.
     """
     if not doc.get("pages"):
         return "", []
@@ -218,6 +249,10 @@ def extract_paper_metadata(doc: dict, max_authors: int = 12) -> tuple[str, list[
     # So we stop once names run out - but tolerate a two-line gap, because
     # Attention Is All You Need interleaves an affiliation line between every
     # pair of author lines.
+    # Body text used to test whether a candidate is really a recurring technical
+    # phrase. Skip page one - the author block itself lives there.
+    body = "\n".join(doc["pages"][1:6]) if len(doc.get("pages", [])) > 1 else ""
+
     authors: list[str] = []
     gap = 0
     for line in lines[1:16]:
@@ -225,12 +260,34 @@ def extract_paper_metadata(doc: dict, max_authors: int = 12) -> tuple[str, list[
         cleaned = re.sub(r"\S+@\S+", " ", cleaned)         # bare emails
         cleaned = re.sub(r"[∗†‡*¹²³]", " ", cleaned)
 
+        # Truncate the line at the first affiliation word, and scan only what
+        # comes before it. Author names precede their affiliation, never follow
+        # it, so everything after that word is institutional.
+        #
+        # Rejecting the whole line instead is too blunt - real papers put both on
+        # one line ("Kaiming He Xiangyu Zhang Shaoqing Ren Jian Sun Microsoft
+        # Research"), and discarding it loses four real authors. Checking only
+        # the matched pair is too lenient - "Max Planck Institute for Molecular
+        # Genetics" rejects "Max Planck" and then returns "Molecular Genetics"
+        # as an author. Truncation handles both.
+        words = cleaned.split()
+        for position, word in enumerate(words):
+            if word.lower().strip(".,") in _AFFILIATION_WORDS:
+                cleaned = " ".join(words[:position])
+                break
+
         found_here = 0
         for match in _AUTHOR_NAME_RE.finditer(cleaned):
             name = re.sub(r"\s+", " ", match.group(0)).strip()
             words = {word.lower().strip(".") for word in name.split()}
             if words & _AFFILIATION_WORDS or words & _NON_NAME_WORDS:
                 continue                   # "Microsoft Research", "Attention Is"
+            # Domain-neutral check: a phrase that recurs through the body is
+            # terminology, not a person. This is what keeps "Gene Expression"
+            # and "Monetary Policy" out of the graph on corpora the blocklists
+            # above know nothing about.
+            if body and _looks_like_body_phrase(name, body):
+                continue
             found_here += 1
             if name not in authors:
                 authors.append(name)
@@ -692,10 +749,83 @@ def print_stats(triples: list[dict]) -> None:
         print(f"     \"{triple['sentence'][:130]}...\"")
 
 
+def run_rebel_batch(num_beams: int = 3, batch_size: int = 8) -> None:
+    """
+    The overnight job: run REBEL over every document that has not had it yet.
+
+    This is the slow half of the two-speed design. Uploading a document runs the
+    fast dependency-parse path (about two minutes for fifty papers) so the
+    workspace is queryable immediately; this adds REBEL's taxonomic relations
+    (subclass of, part of, use) which are what connect the graph into one
+    traversable component. At ~1.3 s/sentence it is five to six hours for fifty
+    papers, which is why it lives here and not in a browser tab.
+
+    Resumable at DOCUMENT granularity. Each document's triples are written as
+    soon as it finishes, and the manifest records that REBEL ran on it - so an
+    interrupted job resumes at the next unprocessed document. The mechanism this
+    replaced stored a flat index into a corpus-wide sentence list validated by an
+    exact sentence-count match, so adding a single PDF invalidated the checkpoint
+    and restarted the whole job from zero.
+    """
+    from src import workspace
+    from src.relation_extractor import RelationExtractor
+
+    pending = workspace.documents_missing(workspace.REBEL)
+    if not pending:
+        total = len(workspace.load_manifest())
+        print(f"Nothing to do - REBEL has run on all {total} document(s).")
+        return
+
+    print(banner("REBEL BATCH EXTRACTION"))
+    print(f"  {len(pending)} document(s) to process.")
+    print("  ~1.3s per sentence on CPU; a typical paper is ~300 sentences.")
+    print("  Safe to interrupt - progress is saved after each document.\n")
+
+    nlp = get_nlp()
+    rebel = RelationExtractor(num_beams=num_beams)
+    started = time.time()
+
+    for index, record in enumerate(pending, start=1):
+        doc_id, filename = record["doc_id"], record["filename"]
+        print(f"[{index}/{len(pending)}] {filename} ...", flush=True)
+
+        try:
+            from src.ingestion import clean_document, extract_pdf
+
+            raw = extract_pdf(RAW_DIR / filename)
+            if raw is None:
+                raise ValueError("could not extract text")
+            doc = clean_document(raw)
+
+            # Replace this document's triples wholesale: the new run includes
+            # both the fast-path relations and REBEL's, so keeping the old file
+            # would duplicate every domain triple.
+            triples = extract_document(doc, nlp, rebel=rebel, batch_size=batch_size)
+            workspace.save_document_triples(doc_id, triples)
+            workspace.update_document(
+                doc_id, n_triples=len(triples), status="processed", error="",
+                extractors_run=sorted(set(record.get("extractors_run", [])
+                                          + [workspace.DOMAIN, workspace.REBEL])),
+            )
+            print(f"    {len(triples):,} triples  ({(time.time() - started) / 60:.1f} min elapsed)")
+        except Exception as exc:  # noqa: BLE001 - one bad document must not end the night
+            workspace.update_document(doc_id, status="failed", error=str(exc)[:300])
+            print(f"    FAILED: {str(exc)[:120]}")
+
+    print("\nRebuilding knowledge graph ...")
+    graph = workspace.rebuild_graph(verbose=True)
+    print(f"Done in {(time.time() - started) / 60:.1f} min. "
+          f"Graph: {graph.graph.number_of_nodes():,} entities, "
+          f"{graph.graph.number_of_edges():,} relations.")
+
+
 def main() -> None:
     setup_console()
 
     parser = argparse.ArgumentParser(description="Batch relation extraction over the corpus")
+    parser.add_argument("--rebel", action="store_true",
+                        help="run REBEL over every workspace document that has not had it "
+                             "yet, one document at a time. Resumable; run it overnight.")
     parser.add_argument("--limit", type=int, help="only process the first N sentences")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-beams", type=int, default=3,
@@ -710,6 +840,11 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.stats_only:
+        print_stats(load_triples())
+        return
+
+    if args.rebel:
+        run_rebel_batch(num_beams=args.num_beams, batch_size=args.batch_size)
         print_stats(load_triples())
         return
 
