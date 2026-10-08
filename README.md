@@ -29,16 +29,15 @@ This project solves that by searching two sources together: a **vector store** f
 - Side-by-side comparison of Basic RAG vs KG-RAG
 - Runs on a CPU-only laptop
 
-## Images
 
 
 
 ## Challenges Faced
 
-1. Basic RAG found related text but could not connect facts across papers, so a knowledge graph was added.
-2. Research PDFs had tables, equations and references, which created noisy facts and duplicate entities.
-3. Combining vector and graph results was tricky, so a cross-encoder was used to rank them together.
-
+Wrong but confident answers: The LLM sometimes made up links between papers when the retrieved context was weak.
+Noisy knowledge graph: PDF tables and references produced junk facts, and the same model showed up under different names.
+Retrieval missing the connection: Vector search missed the link between facts, and graph search pulled in too much.
+Slow processing on CPU: Relation extraction was slow without a GPU, so papers were processed in overnight batches.
 ## Future Scope
 
 1. Move the knowledge graph to Neo4j to handle larger datasets.
