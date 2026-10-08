@@ -443,7 +443,7 @@ scripts/fetch_papers.py  OPTIONAL demo corpus
 ## Author
 
 **Jaydeep** — B.Tech Information Technology, VJTI Mumbai (2027)
-
+**Sakshi** - B.Tech Information Technology, VJTI Mumbai (2027)
 Built as a study of why retrieval architecture matters more than model size: every model here
 is small enough to run on an integrated GPU-less laptop, and the capability gain comes entirely
 from how the retrieval is structured.
