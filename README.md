@@ -156,63 +156,7 @@ to order them.
 
 ---
 
-## Results (optional benchmark)
 
-> This is a **developer benchmark, not part of using the app.** It measures the system against
-> plain vector-only RAG on a fixed question set written for the optional eight-paper demo corpus.
-> The numbers describe *that* corpus — not whatever documents you upload. Reproduce with
-> `python scripts/fetch_papers.py` first.
-
-Twenty questions in three tiers, run through **both** systems and scored 1–5 by an LLM judge
-against hand-written reference answers.
-
-```bash
-python src/evaluate.py
-python src/evaluate.py --basic-top-k 12 --output data/eval_results_controlled.json
-python scripts/update_readme_results.py
-```
-
-The second command is the one that makes the first believable. KG-RAG hands the LLM 12
-evidence items; standard basic RAG hands it 5. So part of any gap is simply *more context*,
-not the graph — and on single-document questions, which need no traversal at all, it can only
-be that. Giving basic RAG the same 12 items isolates what graph retrieval actually contributes.
-
-<!-- RESULTS_TABLE_START -->
-**System vs system** — full KG-RAG against the standard basic-RAG baseline:
-
-| Tier | n | Basic RAG | KG-RAG | Delta | Graph share of evidence |
-|---|---:|---:|---:|---:|---:|
-| Simple (single-doc) | 7 | 4.29 | 4.95 | +0.66 | 26% |
-| Medium (cross-doc, 1-2 hops) | 7 | 4.10 | 4.81 | +0.71 | 33% |
-| **Hard (multi-hop, 3+)** | 6 | **2.34** | **3.22** | **+0.88** | 50% |
-| All | 20 | 3.63 | 4.38 | +0.75 | 36% |
-
-<sub>From `data/eval_results.json` (20 questions, 6.9 min).</sub>
-
-**Controlled** — basic RAG given the *same* 12 evidence items, so the only remaining difference is graph retrieval:
-
-| Tier | n | Basic RAG | KG-RAG | Delta | Graph share of evidence |
-|---|---:|---:|---:|---:|---:|
-| Simple (single-doc) | 7 | 4.47 | 4.86 | +0.39 | 26% |
-| Medium (cross-doc, 1-2 hops) | 7 | 4.29 | 4.81 | +0.52 | 33% |
-| **Hard (multi-hop, 3+)** | 6 | **3.17** | **3.39** | **+0.22** | 50% |
-| All | 20 | 4.02 | 4.40 | +0.38 | 36% |
-
-<sub>From `data/eval_results_controlled.json` (20 questions, 6.4 min).</sub>
-
-<sub>Each score is the mean of correctness, completeness and citation accuracy, judged 1-5 against a hand-written reference answer. Per-question answers and the judge's reasoning are in the JSON files, so any number here can be checked by hand.</sub>
-<!-- RESULTS_TABLE_END -->
-
-**How to read it.** The `simple` tier is not padding — a delta near zero there is the *correct*
-result, showing the graph did not damage what already worked. The `hard` tier is where the
-graph has to earn its place. The `graph share` column is the honesty check: it reports how much
-of the final evidence actually came from traversal. If hard questions score well with a graph
-share near zero, the gap came from somewhere else and the claim is unsupported.
-
-The evaluation is designed so it can fail. If KG-RAG matched basic RAG on multi-hop questions,
-that would mean five phases of work were not worth it, and that is what the numbers would say.
-
----
 
 ## What it looks like
 
